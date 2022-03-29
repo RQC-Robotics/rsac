@@ -34,9 +34,9 @@ class Config(utils.AbstractConfig):
     critic_lr: float = 5e-4
     actor_lr: float = 5e-4
     dual_lr: float = 1e-2
-    critic_tau: float = .98
-    actor_tau: float = .98
-    encoder_tau: float = .98
+    critic_tau: float = .99
+    actor_tau: float = .99
+    encoder_tau: float = .99
 
     total_steps: int = 10 ** 7
     training_steps: int = 300
@@ -44,7 +44,7 @@ class Config(utils.AbstractConfig):
     prefill_steps: int = 5
     eval_freq: int = 10
     max_grad: float = 100.
-    batch_size: int = 10
+    batch_size: int = 20
     buffer_size: int = 200
     burn_in: int = 10
 
@@ -56,7 +56,7 @@ class Config(utils.AbstractConfig):
     pn_dropout: float = 0.
 
     task: str = 'walker_stand'
-    aux_loss: str = 'None'
+    aux_loss: str = 'contrastive'
     logdir: str = 'logdir/contrastive'
     device: str = 'cuda'
 

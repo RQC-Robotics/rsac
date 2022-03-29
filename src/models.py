@@ -28,7 +28,7 @@ class Actor(nn.Module):
         x = self.mlp(x)
         mu, std = x.chunk(2, -1)
         mu = self.mean_scale * torch.tanh(mu / self.mean_scale)
-        std = torch.maximum(std, torch.full_like(std, -10))
+        std = torch.maximum(std, torch.full_like(std, -18.))
         std = F.softplus(std + self.init_std) + 1e-7
         return self.get_dist(mu, std)
 

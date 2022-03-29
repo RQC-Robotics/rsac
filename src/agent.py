@@ -142,15 +142,14 @@ class RSAC(nn.Module):
         elif self._c.aux_loss == 'contrastive':
             #pdb.set_trace()
             # todo make sure states could be reused and not computed twice
-            actions = actions.unfold(0, self._c.spr_depth, 1)
-            actions = actions.flatten(0, 1).movedim(-1, 0)
-            states = states[:-self._c.spr_depth + 1].flatten(0, 1)
-            target_states = target_states.roll(self._c.spr_depth, 0)[:-self._c.spr_depth+1].flatten(0, 1)
+            actions = actions[:-1].unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
+            states = states[:-self._c.spr_depth].flatten(0, 1)
 
             predicted_states = self.cell_roll(self.dm, actions, states)
             predicted_states = self.projection(predicted_states)
             predicted_states = self.prediction(predicted_states)
-            target_states = self._target_projection(target_states)
+            target_states = self._target_projection(target_states[1:])
+            target_states = target_states.unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
 
             contrastive_loss = - self.cos_sim(predicted_states, target_states)
             return contrastive_loss.mean()
