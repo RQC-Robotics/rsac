@@ -154,17 +154,17 @@ def soft_update(target, online, rho):
 def gve(rewards, values, discount, disclam):
     target_values = []
     last_val = values[-1]
-    for r, v in zip(rewards[:-1].flip(-1), values[1:].flip(-1)):
+    for r, v in zip(rewards[:-1].flip(0), values[1:].flip(0)):
         last_val = r + discount*(disclam*last_val + (1.-disclam)*v)
         target_values.append(last_val)
-    return torch.stack(target_values).flip(-1)
+    return torch.stack(target_values).flip(0)
 
 
 @dataclasses.dataclass
 class AbstractConfig(ABC):
     def save(self, file_path):
         yaml = YAML()
-        with open(file_path, 'w') as f:
+        with open(file_path, 'x') as f:
             yaml.dump(dataclasses.asdict(self), f)
 
     def load(self, file_path):

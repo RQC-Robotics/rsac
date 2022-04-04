@@ -9,7 +9,7 @@ class Critic(nn.Module):
     """ proper double critic with separate body"""
     def __init__(self, in_features, heads, layers):
         super().__init__()
-        self.qs = nn.ModuleList([build_mlp([in_features] + layers + [1]) for _ in range(heads)])
+        self.qs = nn.ModuleList([build_mlp((in_features, *layers, 1)) for _ in range(heads)])
 
     def forward(self, obs, action):
         x = torch.cat([obs, action], -1)
@@ -21,7 +21,7 @@ class Actor(nn.Module):
     def __init__(self, in_features, out_features, layers, mean_scale=1, init_std=2.):
         super().__init__()
         self.mean_scale = mean_scale
-        self.mlp = build_mlp([in_features] + layers + [2*out_features])
+        self.mlp = build_mlp((in_features, *layers, 2*out_features))
         self.init_std = torch.log(torch.tensor(init_std).exp() - 1.)
 
     def forward(self, x):
@@ -40,13 +40,9 @@ class Actor(nn.Module):
         return dist
 
 
-# class DummyEncoder(nn.Module):
-#     def __init__(self):
-#         super().__init__()
-#         self.dummy_param = nn.Parameter(torch.zeros(1))
-#
-#     def forward(self, x):
-#         return x
+class DummyEncoder(nn.Linear):
+    def forward(self, x):
+        return super().forward(x), None
 
 
 class PointCloudEncoder(nn.Module):
@@ -99,10 +95,10 @@ class PointCloudDecoder(nn.Module):
 
 
 class PointCloudEncoderv2(nn.Module):
-    def __init__(self, in_features, depth, layers, dropout=0., act=nn.ELU):
+    def __init__(self, in_features, out_features, depth, layers, dropout=0., act=nn.ELU):
         super().__init__()
         coef = 1
-        self.convs = nn.ModuleList([])
+        self.convs = nn.Sequential()
         for i in range(layers):
             next_coef = coef << 1
 
@@ -110,18 +106,50 @@ class PointCloudEncoderv2(nn.Module):
                 linear = nn.Linear(in_features, next_coef * depth)
             else:
                 linear = nn.Linear(coef * depth, next_coef * depth)
+
             m = nn.Sequential(
                 linear,
                 act(),
                 nn.Dropout(dropout),
             )
-            self.convs.append(m)
+
+            self.convs.add_module(f'conv{i}', m)
             coef = next_coef
+    
+        dim = coef*depth
+        self.fc = nn.Sequential(
+                nn.Linear(dim, out_features),
+                #nn.LayerNorm([out_features]),
+                nn.Tanh()
+                )
 
     def forward(self, x):
-        # features = []
-        for module in self.convs:
-            x = module(x)
-            # features.append(x)
-        values, idx = torch.max(x, -2)
-        return values
+        x = self.convs(x)
+        values = torch.max(x, -2).values
+        return self.fc(values)
+
+
+class PointCloudEncoderv3(nn.Module):
+    def __init__(self, in_features, out_features, layers, dropout=0., act=nn.ELU):
+        super().__init__()
+        self.convs = nn.Sequential()
+
+        sizes = (in_features,) + layers
+        for i in range(len(sizes)-1):
+            block = nn.Sequential(
+                nn.Linear(sizes[i], sizes[i+1]),
+                act(),
+                nn.Dropout(dropout)
+            )
+            self.convs.add_module(f'conv{i}', block)
+
+        self.fc = nn.Sequential(
+            nn.Linear(sizes[-1], out_features),
+            nn.LayerNorm([out_features]),
+            nn.Tanh()
+        )
+
+    def forward(self, x):
+        x = self.convs(x)
+        values, indices = torch.max(x, -2)
+        return self.fc(values), indices
