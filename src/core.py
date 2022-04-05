@@ -9,7 +9,7 @@ import datetime
 #from tqdm.notebook import trange
 from tqdm import trange
 from collections import deque
-from statistics import mean
+from statistics import mean, stdev
 import pdb
 
 torch.autograd.set_detect_anomaly(True)
@@ -24,8 +24,8 @@ class Config(utils.AbstractConfig):
 
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (255, 256)
-    hidden_dim: int = 128
-    obs_emb_dim: int = 128
+    hidden_dim: int = 512
+    obs_emb_dim: int = 256
     init_log_alpha: float = 1.
     init_std: float = 3.
     mean_scale: float = 5.
@@ -35,9 +35,9 @@ class Config(utils.AbstractConfig):
     critic_lr: float = 1e-3
     actor_lr: float = 1e-3
     dual_lr: float = 1e-3
-    critic_tau: float = .99
-    actor_tau: float = .99
-    encoder_tau: float = .99
+    critic_tau: float = .995
+    actor_tau: float = .995
+    encoder_tau: float = .995
 
     total_steps: int = 10 ** 7
     training_steps: int = 200
@@ -45,7 +45,7 @@ class Config(utils.AbstractConfig):
     eval_freq: int = 10000
     max_grad: float = 100.
     batch_size: int = 20
-    buffer_size: int = 100
+    buffer_size: int = 200
     burn_in: int = 15
 
 
@@ -105,7 +105,8 @@ class RLAlg:
 
                 if self.interactions_count % self._c.eval_freq == 0:
                     self.agent.eval()
-                    score = mean([utils.simulate(self.env, policy, False)['rewards'].sum() for _ in range(5)])
+                    scores = [utils.simulate(self.env, policy, False)['rewards'].sum() for _ in range(5)]
+                    score = mean(scores)
                     logs.append(score)
                     #pbar.update(self.interactions_count - pbar.n)
                     pbar.set_postfix(score=score, mean10=mean(logs))
@@ -141,5 +142,5 @@ class RLAlg:
             env = wrappers.depthMapWrapper(env, device=self._c.device, points=self._c.pn_number, camera_id=1)
         env = wrappers.FrameSkip(env, self._c.action_repeat)
         act_dim = env.action_space.shape[0]
-        obs_dim = env.observation_space.shape[0]  # only used for states
+        obs_dim = env.observation_space.shape[0]  # only used for states as observations
         return env, act_dim, obs_dim

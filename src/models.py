@@ -141,3 +141,45 @@ class PixelDecoder(nn.Module):
         if reshape:
             img = img.reshape(seq_len, batch_size, 3, 64, 64)
         return img
+
+
+import torch
+
+nn = torch.nn
+import matplotlib.pyplot as plt
+
+
+# todo assert one device
+class PCA(nn.Module):
+    def __init__(self, encoder, emb_dim, states_dim):
+        super().__init__()
+        self.encoder = encoder  # inherit from actor
+        self.device = next(encoder.parameters()).device
+        self.head = nn.Linear(emb_dim, states_dim).to(self.device)
+        self.optim = torch.optim.SGD(self.head(), lr=1e-3)
+
+    def forward(self, observations):
+        if not torch.is_tensor(observations):
+            observations = torch.from_numpy(observations)
+        observations = observations.to(self.device)
+        with torch.no_grad():
+            obs_emb, _ = self.encoder(observations)
+        return self.head(obs_emb)
+
+    def learn(self, observations, states):
+        states_pred = self(observations)
+        loss = (states_pred - states).pow(2).mean()
+        self.optim.zero_grad()
+        loss.backward()
+        self.optim.step()
+        return loss.item()
+
+    @torch.no_grad()
+    def plot(self, observations, states):
+        states_pred = self(observations).detach().cpu().numpy()
+        if torch.is_tensor(states):
+            states = states.detach().cpu().numpy()
+        for i in range(states.size(-1)):
+            plt.plot(states_pred[:, i])
+            plt.plot(states[:, i])
+            plt.show()

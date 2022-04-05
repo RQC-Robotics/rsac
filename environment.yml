@@ -1,26 +1,26 @@
-name: contrastive
+#name: contrastive
 channels:
   - pytorch
+  #- pytorch3d
+  #- fvcore
+  #- iopath
   - conda-forge
-  - pytorch3d
-  - fvcore
-  - iopath
   - defaults
 dependencies:
   - python=3.9
   - numpy
   - pip
   - tqdm
-  - pytorch=1.10
-  - torchvision
+  #- pytorch=1.10
+  #- torchvision
   - cudatoolkit=11.3
-  - fvcore
-  - iopath
-  - pytorch3d
+  #- fvcore
+  #- iopath
+  #- pytorch3d
   - matplotlib
   - tensorboard
   - pip:
     - gym
     - dm_control
     - ruamel.yaml
-prefix: /opt/conda/envs/contrastive
+#prefix: /opt/conda/envs/contrastive

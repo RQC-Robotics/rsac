@@ -83,7 +83,7 @@ class TrajectoryBuffer(Dataset):
         return {k: v[start:start+self.seq_len] for k, v in tr.items()}
 
     def __len__(self):
-        return 5*len(self._data)  # just not to sample too often from the same sequence at the begin
+        return 5*len(self._data)  # just to don't sample too often from the same sequence at the begin
 
 
 class TanhTransform(td.transforms.TanhTransform):

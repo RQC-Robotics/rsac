@@ -147,8 +147,9 @@ class depthMapWrapper(Wrapper):
         fovy = self.env.physics.model.cam_fovy[0]
         return dict(
             camera_fovy=fovy,
-            image_height=self._depth_kwargs.get('height') or 240,
-            image_width=self._depth_kwargs.get('width') or 320)
+            image_height=self._depth_kwargs.get('height', 240),
+            image_width=self._depth_kwargs.get('width', 320)
+        )
 
 
 class Monitor(Wrapper):
@@ -157,6 +158,10 @@ class Monitor(Wrapper):
         self.path = pathlib.Path(path)
         self.render_kwargs = render_kwargs
         self._data = defaultdict(list)
+
+    def reset(self):
+        self._data = defaultdict(list)
+        return self.env.reset()
 
     def step(self, action):
         pc, r, d, _ = self.env.step(action)
@@ -180,13 +185,8 @@ class Monitor(Wrapper):
         """
         pass
 
-    def free(self):
-        self._data = defaultdict(list)
-
     @property
     def data(self):
-        import pdb
-        pdb.set_trace()
         data = {}
         for k, v in self._data.items():
             if isinstance(v[0], np.ndarray):
