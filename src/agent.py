@@ -52,9 +52,10 @@ class RSAC(nn.Module):
         auxiliary_loss = self._auxiliary_loss(obs, actions, obs_emb, target_obs_emb)
         critic_loss = rl_loss + auxiliary_loss
 
-        self._critic_optim.zero_grad()
+        self.critic_optim.zero_grad()
         critic_loss.backward()
         clip_grad_norm_(self._critic_parameters, self._c.max_grad)
+        # adv loss
         self.callback.add_scalar('train/auxiliary_loss', auxiliary_loss.item(), self._step)
         self.callback.add_scalar('train/critic_loss', critic_loss.item(), self._step)
         self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
@@ -63,16 +64,16 @@ class RSAC(nn.Module):
 
         #self._critic_parameters.requires_grad_(False)
         actor_loss, dual_loss = self._policy_improvement(states.detach(), alpha)
-        self._actor_optim.zero_grad()
-        self._dual_optim.zero_grad()
+        self.actor_optim.zero_grad()
+        self.dual_optim.zero_grad()
         actor_loss.backward()
         dual_loss.backward()
         clip_grad_norm_(self.actor.parameters(), self._c.max_grad)
         self.callback.add_scalar('train/actor_loss', actor_loss.item(), self._step)
         self.callback.add_scalar('train/actor_grads', utils.grads_sum(self.actor), self._step)
-        self._critic_optim.step()
-        self._actor_optim.step()
-        self._dual_optim.step()
+        self.critic_optim.step()
+        self.actor_optim.step()
+        self.dual_optim.step()
         self.update_target()
         self._step += 1
 
@@ -122,7 +123,11 @@ class RSAC(nn.Module):
             return torch.tensor(0., requires_grad=True)
         elif self._c.aux_loss == 'reconstruction':
             obs_pred = self.decoder(obs_emb)
-            return chamfer_distance(obs.flatten(0, 1), obs_pred.flatten(0, 1))[0]
+            if self._c.observe == 'point_cloud':
+                loss = chamfer_distance(obs.flatten(0, 1), obs_pred.flatten(0, 1))[0]
+            else:
+                loss = (obs_pred - obs).pow(2).mean()
+            return loss
         elif self._c.aux_loss == 'contrastive':
             actions = actions[:-1].unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
             obs_emb = obs_emb[:-self._c.spr_depth].flatten(0, 1)
@@ -158,15 +163,15 @@ class RSAC(nn.Module):
         return mask
 
     def _build(self):
+        emb = self._c.obs_emb_dim
         self.device = torch.device(self._c.device if torch.cuda.is_available() else 'cpu')
-        self.cell = nn.GRUCell(self._c.pn_emb_dim, self._c.hidden_dim)
+        self.cell = nn.GRUCell(emb, self._c.hidden_dim)
         self.actor = models.Actor(self._c.hidden_dim, self.act_dim, layers=self._c.actor_layers,
                                   mean_scale=self._c.mean_scale, init_std=self._c.init_std)
 
-        self.critic = models.Critic(self._c.hidden_dim + self.act_dim, 2, self._c.critic_layers)
+        self.critic = models.Critic(self._c.hidden_dim + self.act_dim, self._c.critic_layers)
 
         # SPR
-        emb = self._c.pn_emb_dim
         self.dm = nn.GRUCell(self.act_dim, emb)
         self.projection = nn.Sequential(
             nn.Linear(emb, emb),
@@ -176,12 +181,17 @@ class RSAC(nn.Module):
         self.prediction = nn.Linear(emb, emb)
         self.cos_sim = nn.CosineSimilarity(dim=-1)
 
-        self.encoder = models.PointCloudEncoderv3(3, self._c.pn_emb_dim, self._c.pn_layers, dropout=self._c.pn_dropout,
-                                                  act=nn.ELU)
-        #self.encoder = models.DummyEncoder(self.obs_dim, self._c.pn_emb_dim)
-        # self.decoder = models.PointCloudDecoder(in_features=self._c.pn_emb_dim, out_features=3, depth=self._c.pn_depth,
-        #                                         layers=self._c.pn_layers, pn_number=self._c.pn_number)
-        self.decoder = nn.Identity()
+        if self._c.observe == 'states':
+            self.encoder = models.DummyEncoder(self.obs_dim, emb)
+            self.decoder = nn.Linear(emb, self.obs_dim)
+        elif self._c.observe == 'pixels':
+            self.encoder = models.PixelEncoder(3, emb)
+            self.decoder = models.PixelDecoder(emb, 3)
+        elif self._c.observe == 'point_cloud':
+            self.encoder = models.PointCloudEncoder(3, emb, self._c.pn_layers,
+                                                    dropout=self._c.pn_dropout)
+            self.decoder = models.PointCloudDecoder(emb, pn_number=self._c.pn_number)
+
         self._log_alpha = nn.Parameter(torch.tensor(self._c.init_log_alpha).float())
         self._target_encoder, self._target_actor, self._target_critic, self._target_cell, self._target_projection \
             = map(lambda m: deepcopy(m).requires_grad_(False),
@@ -200,9 +210,9 @@ class RSAC(nn.Module):
                        )
                   )
         )
-        self._critic_optim = torch.optim.Adam(self._critic_parameters, self._c.critic_lr)
-        self._actor_optim = torch.optim.Adam(self.actor.parameters(), self._c.actor_lr)
-        self._dual_optim = torch.optim.Adam([self._log_alpha], self._c.dual_lr)
+        self.critic_optim = torch.optim.Adam(self._critic_parameters, self._c.critic_lr)
+        self.actor_optim = torch.optim.Adam(self.actor.parameters(), self._c.actor_lr)
+        self.dual_optim = torch.optim.Adam([self._log_alpha], self._c.dual_lr)
         self._target_entropy = -self.act_dim
         self.to(self.device)
 

@@ -164,7 +164,7 @@ def gve(rewards, values, discount, disclam):
 class AbstractConfig(ABC):
     def save(self, file_path):
         yaml = YAML()
-        with open(file_path, 'x') as f:
+        with open(file_path, 'w') as f:
             yaml.dump(dataclasses.asdict(self), f)
 
     def load(self, file_path):

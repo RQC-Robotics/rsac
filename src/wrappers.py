@@ -7,6 +7,7 @@ import ctypes
 import pathlib
 from collections import defaultdict
 from dm_control.mujoco.wrapper import MjvOption
+from dm_control.suite.wrappers import pixels
 
 
 class Wrapper:
@@ -14,7 +15,7 @@ class Wrapper:
 
     def __init__(self, env):
         self.env = env
-        self.observation_space, self.action_space = self._infer_spaces(env)
+        self._observation_space, self._action_space = self._infer_spaces(env)
 
     def observation(self, timestamp):
         return timestamp
@@ -50,6 +51,21 @@ class Wrapper:
     def __getattr__(self, item):
         return getattr(self.env, item)
 
+    @property
+    def unwrapped(self):
+        env = self
+        while hasattr(env, 'env'):
+            env = env.env
+        return env
+
+    @property
+    def observation_space(self):
+        return self._observation_space
+
+    @property
+    def action_space(self):
+        return self._action_space
+
 
 class dmWrapper(Wrapper):
     def observation(self, timestamp):
@@ -61,7 +77,7 @@ class dmWrapper(Wrapper):
         return obs.astype(np.float32)
 
 
-class FrameSkip(gym.Wrapper):
+class FrameSkip(Wrapper):
     def __init__(self, env, frames_number):
         super().__init__(env)
         self.fn = frames_number
@@ -73,7 +89,7 @@ class FrameSkip(gym.Wrapper):
             R += reward
             if done:
                 break
-        return np.float32(next_obs), np.float32(R), done, info
+        return np.float32(next_obs), np.float32(R), done, info  # np.float32(next_obs)
 
     def reset(self):
         return np.float32(self.env.reset())
@@ -136,21 +152,22 @@ class depthMapWrapper(Wrapper):
 
 
 class Monitor(Wrapper):
-    def __init__(self, env, path, render_kwargs={'camera_id': 1}):
+    def __init__(self, env, path, render_kwargs={'camera_id': 1}, device='cpu'):
         self.env = env
         self.path = pathlib.Path(path)
         self.render_kwargs = render_kwargs
         self._data = defaultdict(list)
 
     def step(self, action):
-        timestamp = self.env.step(action)
+        pc, r, d, _ = self.env.step(action)
         image = self._render()
         depth = self._render(depth=True)
         state = self.env.physics.state()
         self._data['states'].append(state)
         self._data['depth_maps'].append(depth)
         self._data['images'].append(image)
-        return timestamp
+        self._data['point_clouds'].append(pc)
+        return pc, r, d, _
 
     def _render(self, **kwargs):
         kw = self.render_kwargs.copy()
@@ -168,4 +185,29 @@ class Monitor(Wrapper):
 
     @property
     def data(self):
-        return self._data
+        import pdb
+        pdb.set_trace()
+        data = {}
+        for k, v in self._data.items():
+            if isinstance(v[0], np.ndarray):
+                data[k] = torch.from_numpy(np.stack(v))
+            else:
+                data[k] = torch.stack(v)
+        return data
+
+
+class PixelsToGym(Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        self.env = pixels.Wrapper(self.env, render_kwargs={'camera_id': 1, 'height': 64, 'width': 64})
+
+    def observation(self, timestamp):
+        obs = timestamp.observation['pixels']
+        obs = np.array(obs) / 255.
+        obs = np.array(obs)
+        return obs.transpose((2, 1, 0))
+
+    @property
+    def observation_space(self):
+        # correspondent space have to be extracted from the dm_control API -> gym API
+        return Box(low=0., high=1., shape=(64, 64, 3))
