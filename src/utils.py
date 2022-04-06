@@ -44,7 +44,7 @@ def simulate(env, policy, training):
     prev_state = None
     observations, actions, rewards, states = [], [], [], []  # also states for recurrent agent
     while not done:
-        if prev_state is not None:
+        if torch.is_tensor(prev_state):
             states.append(prev_state.detach().cpu().flatten().numpy())
             action, prev_state = policy(obs, prev_state, training)
         else:

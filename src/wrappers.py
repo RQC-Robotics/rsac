@@ -153,7 +153,7 @@ class depthMapWrapper(Wrapper):
 
 
 class Monitor(Wrapper):
-    def __init__(self, env, path, render_kwargs={'camera_id': 1}, device='cpu'):
+    def __init__(self, env, path, render_kwargs={'camera_id': 1}):
         self.env = env
         self.path = pathlib.Path(path)
         self.render_kwargs = render_kwargs
@@ -164,15 +164,15 @@ class Monitor(Wrapper):
         return self.env.reset()
 
     def step(self, action):
-        pc, r, d, _ = self.env.step(action)
-        image = self._render()
-        depth = self._render(depth=True)
+        obs, r, d, _ = self.env.step(action)
+        #image = self._render()
+        #depth = self._render(depth=True)
         state = self.env.physics.state()
         self._data['states'].append(state)
-        self._data['depth_maps'].append(depth)
-        self._data['images'].append(image)
-        self._data['point_clouds'].append(pc)
-        return pc, r, d, _
+        #self._data['depth_maps'].append(depth)
+        #self._data['images'].append(image)
+        self._data['observations'].append(obs)
+        return obs, r, d, _
 
     def _render(self, **kwargs):
         kw = self.render_kwargs.copy()
@@ -181,7 +181,7 @@ class Monitor(Wrapper):
 
     def save(self, path_dir):
         """
-        save data to path_dir in the desired format
+        save data to path_dir in desired format
         """
         pass
 

@@ -4,8 +4,7 @@ from . import models, utils
 from copy import deepcopy
 from torch.nn.utils import clip_grad_norm_
 from itertools import chain
-from pytorch3d.loss import chamfer_distance
-from torch.cuda.amp import autocast, GradScaler
+#from pytorch3d.loss import chamfer_distance
 
 torch.autograd.set_detect_anomaly(True)
 td = torch.distributions
@@ -26,9 +25,10 @@ class RSAC(nn.Module):
     def policy(self, obs, state, training):
         if not torch.is_tensor(state):
             state = self.init_hidden(obs.size(0))
-        obs, _ = self.encoder(obs)
-        state = self.cell(obs, state)
-        dist = self.actor(state)
+        # test with targets
+        obs, _ = self._target_encoder(obs)
+        state = self._target_cell(obs, state)
+        dist = self._target_actor(state)
         if training:
             action = dist.sample()
             #action = action + .3*torch.randn_like(action)
@@ -42,11 +42,11 @@ class RSAC(nn.Module):
         obs_emb, _ = self.encoder(obs)
         target_obs_emb, _ = self._target_encoder(obs)
         #zeros = torch.zeros_like(hidden_states[0], device=self.device)
-        states = self.cell_roll(self.cell, obs_emb, hidden_states[0])
+        states = self.cell_roll(self.cell, obs_emb, hidden_states[0], bptt=self._c.bptt)
         target_states = self.cell_roll(self._target_cell, target_obs_emb, hidden_states[0])
 
-        alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -18.))
-        alpha = F.softplus(alpha) + 1e-7
+        alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -20.))
+        alpha = F.softplus(alpha) + 1e-8
 
         rl_loss = self._policy_learning(states, actions, rewards, target_states, alpha)
         auxiliary_loss = self._auxiliary_loss(obs, actions, obs_emb, target_obs_emb)
@@ -55,9 +55,9 @@ class RSAC(nn.Module):
         self.critic_optim.zero_grad()
         critic_loss.backward()
         clip_grad_norm_(self._critic_parameters, self._c.max_grad)
-        # adv loss
+        # train/adv
         self.callback.add_scalar('train/auxiliary_loss', auxiliary_loss.item(), self._step)
-        self.callback.add_scalar('train/critic_loss', critic_loss.item(), self._step)
+        self.callback.add_scalar('train/critic_loss', rl_loss.item(), self._step)
         self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
         self.callback.add_scalar('train/encoder_grads', utils.grads_sum(self.encoder), self._step)
         self.callback.add_scalar('train/cell_grads', utils.grads_sum(self.cell), self._step)
@@ -146,9 +146,11 @@ class RSAC(nn.Module):
             raise NotImplementedError
 
     @staticmethod
-    def cell_roll(cell, inp, state):
+    def cell_roll(cell, inp, state, bptt=-1):
         states = []
-        for x in inp:
+        for i, x in enumerate(inp):
+            if bptt > 0 and i % bptt == 0:
+                state = state.detach()
             state = cell(x, state)
             states.append(state)
         return torch.stack(states)
@@ -218,7 +220,7 @@ class RSAC(nn.Module):
 
     @torch.no_grad()
     def update_target(self):
-        utils.soft_update(self._target_encoder, self.encoder, self._c.critic_tau)
+        utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
         utils.soft_update(self._target_cell, self.cell, self._c.critic_tau)
         utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
         utils.soft_update(self._target_projection, self.projection, self._c.critic_tau)
