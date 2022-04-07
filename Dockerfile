@@ -10,10 +10,6 @@ RUN apt-get -yqq update && \
         wget \
         libegl1 \
         libgl1-mesa-glx && \
-        #ffmpeg \
-        #libglew2.0  && \
-        #libglew2.0 libglfw3 libglew-dev \
-        #libgl1-mesa-glx libosmesa6-dev && \
     apt-get clean && rm -rf /var/lib/apt/list
 
 RUN wget \
@@ -22,8 +18,7 @@ RUN wget \
     tar -zxf /tmp/mujoco.tar.gz -C /root/.mujoco && \
     rm /tmp/mujoco.tar.gz
 
-ENV LD_LIBRARY_PATH=/root/.mujoco/mujoco-2.1.3/lib:$LD_LIBRARY_PATH \
-    MJLIB_PATH=/root/.mujoco/mujoco-2.1.3/lib/libmujoco.so
+ENV MJLIB_PATH=/root/.mujoco/mujoco-2.1.3/lib/libmujoco.so
 
 RUN pip install --no-cache-dir \
       pytorch3d \

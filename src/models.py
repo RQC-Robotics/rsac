@@ -82,9 +82,16 @@ class PointCloudEncoder(nn.Module):
             nn.Tanh()
         )
 
+        self.soft = False
+
     def forward(self, x):
         x = self.convs(x)
-        values, indices = torch.max(x, -2)
+        # try soft sampling
+        if self.soft:
+            indices = F.gumbel_softmax(x, hard=True).argmax(-2)
+            values = torch.gather(x, -2, indices.unsqueeze(-2)).squeeze(-2)
+        else:
+            values, indices = torch.max(x, -2)
         return self.fc(values), indices
 
 

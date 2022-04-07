@@ -6,7 +6,6 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 import pathlib
 import datetime
-#from tqdm.notebook import trange
 from tqdm import trange
 from collections import deque
 import numpy as np
@@ -24,7 +23,7 @@ class Config(utils.AbstractConfig):
 
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (255, 256)
-    hidden_dim: int = 128
+    hidden_dim: int = 256
     obs_emb_dim: int = 64
     init_log_alpha: float = 1.
     init_std: float = 3.
@@ -34,7 +33,7 @@ class Config(utils.AbstractConfig):
 
     critic_lr: float = 1e-3
     actor_lr: float = 1e-3
-    dual_lr: float = 1e-2
+    dual_lr: float = 1e-3
     critic_tau: float = .995
     actor_tau: float = .995
     encoder_tau: float = .995
@@ -47,19 +46,19 @@ class Config(utils.AbstractConfig):
     batch_size: int = 20
     buffer_size: int = 300
     burn_in: int = 10
-    bptt: int = 16
+    bptt: int = 8
 
 
     # PointNet
     pn_number: int = 600
-    pn_layers: tuple = (64, 128)#field(default_factory=lambda: [64, 128])
+    pn_layers: tuple = (64, 128)
     pn_dropout: float = 0.
 
     task: str = 'walker_stand'
     aux_loss: str = 'None'
     logdir: str = 'logdir/'
     device: str = 'cuda'
-    observe: str = 'states'
+    observe: str = 'point_cloud'
 
     def __post_init__(self):
         spi = self.training_steps * self.batch_size * self.seq_len / 1000.
@@ -70,18 +69,18 @@ class RLAlg:
     def __init__(self, config):
 
         self.config = config
-        self.env, act_dim, states_dim = self._make_env()
+        self.env, act_dim, obs_dim = self._make_env()
         # todo decide how to remove collision of paths
         self._task_path = pathlib.Path(config.logdir).joinpath(
-            f'./{config.task}/{config.observe}/{config.aux_loss}/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}')
+            f'./{config.task}/{config.observe}/{config.aux_loss}')
         self.callback = SummaryWriter(log_dir=self._task_path)
-        self.agent = RSAC(states_dim, act_dim, config, self.callback)
+        self.agent = RSAC(obs_dim, act_dim, config, self.callback)
         self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len)
         self.interactions_count = 0
 
     def learn(self):
         self.config.save(self._task_path / 'config')
-        logs = deque(maxlen=10)
+        mean10 = deque(maxlen=10)
 
         def policy(obs, state, training):
             obs = torch.from_numpy(obs[None]).to(self.agent.device)
@@ -89,8 +88,7 @@ class RLAlg:
             return action.cpu().detach().numpy().flatten(), state
 
         with trange(self.config.total_steps) as pbar:
-            while True:
-                pbar.n = self.interactions_count
+            while pbar.n < self.config.total_steps:
                 tr = utils.simulate(self.env, policy, True)
                 self.buffer.add(tr)
                 self.interactions_count += 1000
@@ -108,13 +106,15 @@ class RLAlg:
                     self.agent.eval()
                     scores = [utils.simulate(self.env, policy, False)['rewards'].sum() for _ in range(5)]
                     score = np.mean(scores)
-                    logs.append(score)
-                    pbar.set_postfix(score=score, mean10=np.mean(logs))
+                    mean10.append(score)
+                    pbar.set_postfix(score=score, mean10=np.mean(mean10))
                     self.callback.add_scalar('test/eval_reward', score, pbar.n)
                     self.callback.add_scalar('test/eval_std', np.std(scores), pbar.n)
 
-                # if self.interactions_count % (5*self.config.eval_freq) == 0:
-                #     self.save()
+                if self.interactions_count % (5*self.config.eval_freq) == 0:
+                    self.save()
+
+                pbar.n = self.interactions_count
 
     def save(self):
         torch.save({
@@ -127,7 +127,7 @@ class RLAlg:
 
     def load(self, path):
         path = pathlib.Path(path)
-        self.config.load(path / 'config')
+        self.config = self.config.load(path / 'config')
         if (path / 'checkpoint').exists():
             chkp = torch.load(path / 'checkpoint')
             with torch.no_grad():
@@ -147,5 +147,5 @@ class RLAlg:
             env = wrappers.depthMapWrapper(env, device=self.config.device, points=self.config.pn_number, camera_id=1)
         env = wrappers.FrameSkip(env, self.config.action_repeat)
         act_dim = env.action_space.shape[0]
-        states_dim = env.observation_space.shape[0]
-        return env, act_dim, states_dim
+        obs_dim = env.observation_space.shape[0]
+        return env, act_dim, obs_dim

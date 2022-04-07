@@ -171,5 +171,4 @@ class AbstractConfig(ABC):
         yaml = YAML()
         with open(file_path) as f:
             config_dict = yaml.load(f)
-        for k, v in config_dict.items():
-            setattr(self, k, v)
+        return dataclasses.replace(self, **config_dict)
