@@ -43,9 +43,11 @@ class Wrapper:
         action_space = Box(low=spec.minimum.astype(np.float32), dtype=np.float32,
                            high=spec.maximum.astype(np.float32), shape=spec.shape)
         ar = list(env.observation_spec().values())[0]
+
         obs_sample = np.concatenate(list(map(lambda ar: ar.generate_value() if ar.shape != () else [1],
                                              env.observation_spec().values())))
-        obs_space = Box(low=-lim, high=lim, shape=obs_sample.shape, dtype=ar.dtype)
+
+        obs_space = Box(low=-lim, high=lim, shape=obs_sample.shape, dtype=np.float32)#ar.dtype)
         return obs_space, action_space
 
     def __getattr__(self, item):

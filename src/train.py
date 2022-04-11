@@ -9,13 +9,15 @@ def parse_args():
     parser.add_argument('--task', type=str, default='walker_stand')
     parser.add_argument('--observe', type=str, choices=['states', 'pixels', 'point_cloud'], default='point_cloud')
     parser.add_argument('--loss', type=str, choices=['None', 'contrastive', 'reconstruction'], default='None')
+    parser.add_argument('--logdir', type=str, default='logdir')
     return parser.parse_args()
 
 def make_config(args):
     config = Config()
     config.task = args.task
     config.observe = args.observe
-    config.loss = args.loss
+    config.aux_loss = args.loss
+    config.logdir = args.logdir
     return config
 
 if __name__=="__main__":

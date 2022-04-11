@@ -6,7 +6,6 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 import pathlib
 import datetime
-from tqdm import trange
 from collections import deque
 import numpy as np
 import pdb
@@ -39,14 +38,14 @@ class Config(utils.AbstractConfig):
     encoder_tau: float = .995
 
     total_steps: int = 2 * 10 ** 6
-    training_steps: int = 200
+    training_steps: int = 300
     seq_len: int = 50
     eval_freq: int = 10000
     max_grad: float = 100.
     batch_size: int = 50
     buffer_size: int = 500
     burn_in: int = 10
-    bptt: int = 8
+    bptt: int = 4
 
 
     # PointNet
@@ -80,41 +79,35 @@ class RLAlg:
 
     def learn(self):
         self.config.save(self._task_path / 'config')
-        mean10 = deque(maxlen=10)
 
         def policy(obs, state, training):
             obs = torch.from_numpy(obs[None]).to(self.agent.device)
             action, state = self.agent.policy(obs, state, training)
             return action.cpu().detach().numpy().flatten(), state
 
-        with trange(self.config.total_steps) as pbar:
-            while pbar.n < self.config.total_steps:
-                tr = utils.simulate(self.env, policy, True)
-                self.buffer.add(tr)
-                self.interactions_count += 1000
+        while self.interactions_count < self.config.total_steps:
+            tr = utils.simulate(self.env, policy, True)
+            self.buffer.add(tr)
+            self.interactions_count += 1000
 
-                dl = DataLoader(self.buffer, batch_size=self.config.batch_size)
-                self.agent.train()
-                for i, tr in enumerate(dl):
-                    obs, actions, rewards, hidden_states = map(lambda k: tr[k].to(self.agent.device).transpose(0, 1),
-                        ('observations', 'actions', 'rewards', 'states'))
-                    self.agent.step(obs, actions, rewards, hidden_states)
-                    if i > self.config.training_steps:
-                        break
+            dl = DataLoader(self.buffer, batch_size=self.config.batch_size)
+            self.agent.train()
+            for i, tr in enumerate(dl):
+                obs, actions, rewards, hidden_states = map(lambda k: tr[k].to(self.agent.device).transpose(0, 1),
+                    ('observations', 'actions', 'rewards', 'states'))
+                self.agent.step(obs, actions, rewards, hidden_states)
+                if i > self.config.training_steps:
+                    break
 
-                if self.interactions_count % self.config.eval_freq == 0:
-                    self.agent.eval()
-                    scores = [utils.simulate(self.env, policy, False)['rewards'].sum() for _ in range(5)]
-                    score = np.mean(scores)
-                    mean10.append(score)
-                    pbar.set_postfix(score=score, mean10=np.mean(mean10))
-                    self.callback.add_scalar('test/eval_reward', score, pbar.n)
-                    self.callback.add_scalar('test/eval_std', np.std(scores), pbar.n)
+            if self.interactions_count % self.config.eval_freq == 0:
+                self.agent.eval()
+                scores = [utils.simulate(self.env, policy, False)['rewards'].sum() for _ in range(5)]
+                score = np.mean(scores)
+                self.callback.add_scalar('test/eval_reward', score, self.interactions_count)
+                self.callback.add_scalar('test/eval_std', np.std(scores), self.interactions_count)
 
-                if self.interactions_count % (5*self.config.eval_freq) == 0:
-                    self.save()
-
-                pbar.n = self.interactions_count
+            if self.interactions_count % (5*self.config.eval_freq) == 0:
+                self.save()
 
     def save(self):
         torch.save({
