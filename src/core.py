@@ -19,6 +19,7 @@ class Config(utils.AbstractConfig):
     disclam: float = .95
     num_samples: int = 4
     action_repeat: int = 2
+    expl_noise: float = .1  # however sac doesn't require it
 
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
@@ -45,7 +46,7 @@ class Config(utils.AbstractConfig):
     batch_size: int = 50
     buffer_size: int = 500
     burn_in: int = 10
-    bptt: int = 4
+    bptt: int = 8
 
 
     # PointNet
@@ -56,7 +57,7 @@ class Config(utils.AbstractConfig):
     task: str = 'walker_stand'
     aux_loss: str = 'None'
     logdir: str = 'logdir/'
-    device: str = 'cuda:0'
+    device: str = 'cuda'
     observe: str = 'point_cloud'
 
     def __post_init__(self):

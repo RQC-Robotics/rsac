@@ -10,6 +10,7 @@ def parse_args():
     parser.add_argument('--observe', type=str, choices=['states', 'pixels', 'point_cloud'], default='point_cloud')
     parser.add_argument('--loss', type=str, choices=['None', 'contrastive', 'reconstruction'], default='None')
     parser.add_argument('--logdir', type=str, default='logdir')
+    parser.add_argument('--device', type=str, default='cuda')
     return parser.parse_args()
 
 def make_config(args):
@@ -18,6 +19,7 @@ def make_config(args):
     config.observe = args.observe
     config.aux_loss = args.loss
     config.logdir = args.logdir
+    config.device = args.device
     return config
 
 if __name__=="__main__":

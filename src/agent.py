@@ -25,13 +25,13 @@ class RSAC(nn.Module):
     def policy(self, obs, state, training):
         if not torch.is_tensor(state):
             state = self.init_hidden(obs.size(0))
-        # test with targets
-        obs, _ = self._target_encoder(obs)
-        state = self._target_cell(obs, state)
-        dist = self._target_actor(state)
+        # test with targets instead of online networks
+        obs, _ = self.encoder(obs)
+        state = self.cell(obs, state)
+        dist = self.actor(state)
         if training:
             action = dist.sample()
-            #action = action + .3*torch.randn_like(action)
+            action = action + self._c.expl_noise*torch.randn_like(action)
         else:
             action = dist.sample([100]).mean(0)
         action = torch.clamp(action, -1, 1)
@@ -206,6 +206,7 @@ class RSAC(nn.Module):
                            self.cell,
                            self.dm,
                            self.projection,
+                           self.prediction,
                            self.decoder,
                            self.critic
                        ]
@@ -221,9 +222,9 @@ class RSAC(nn.Module):
     @torch.no_grad()
     def update_target(self):
         utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
+        utils.soft_update(self._target_projection, self.projection, self._c.encoder_tau)
         utils.soft_update(self._target_cell, self.cell, self._c.critic_tau)
         utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
-        utils.soft_update(self._target_projection, self.projection, self._c.critic_tau)
         utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)
 
     def init_hidden(self, batch_size=1):

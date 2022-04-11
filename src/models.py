@@ -40,9 +40,18 @@ class Actor(nn.Module):
         return dist
 
 
-class DummyEncoder(nn.Linear):
+class DummyEncoder(nn.Module):
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        self.emb = nn.Sequential(
+                nn.Linear(in_features, out_features),
+                nn.ELU(),
+                nn.Linear(out_features, out_features),
+                nn.Tanh(),
+                )
+
     def forward(self, x):
-        return super().forward(x), None
+        return self.emb(x), None
 
 
 class PointCloudDecoder(nn.Module):
