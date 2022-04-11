@@ -4,7 +4,7 @@ from . import models, utils
 from copy import deepcopy
 from torch.nn.utils import clip_grad_norm_
 from itertools import chain
-#from pytorch3d.loss import chamfer_distance
+from pytorch3d.loss import chamfer_distance
 
 torch.autograd.set_detect_anomaly(True)
 td = torch.distributions
