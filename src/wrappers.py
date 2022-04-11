@@ -137,7 +137,7 @@ class depthMapWrapper(Wrapper):
 
     def _prepare_scene(self):
         scene = MjvOption()
-        scene.ptr.contents.flags = (ctypes.c_uint8*22)(0)
+        scene.flags = (ctypes.c_uint8*22)(0)
 
         return scene
 

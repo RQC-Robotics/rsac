@@ -18,17 +18,17 @@ torch.autograd.set_detect_anomaly(True)
 class Config(utils.AbstractConfig):
     discount: float = .99
     disclam: float = .95
-    num_samples: int = 6
+    num_samples: int = 4
     action_repeat: int = 2
 
     critic_layers: tuple = (256, 256)
-    actor_layers: tuple = (255, 256)
+    actor_layers: tuple = (256, 256)
     hidden_dim: int = 256
     obs_emb_dim: int = 64
     init_log_alpha: float = 1.
     init_std: float = 3.
     mean_scale: float = 5.
-    spr_coef: float = 1
+    spr_coef: float = .5
     spr_depth: int = 5
 
     critic_lr: float = 1e-3
@@ -38,13 +38,13 @@ class Config(utils.AbstractConfig):
     actor_tau: float = .995
     encoder_tau: float = .995
 
-    total_steps: int = 10 ** 7
+    total_steps: int = 2 * 10 ** 6
     training_steps: int = 200
     seq_len: int = 50
     eval_freq: int = 10000
     max_grad: float = 100.
-    batch_size: int = 20
-    buffer_size: int = 300
+    batch_size: int = 50
+    buffer_size: int = 500
     burn_in: int = 10
     bptt: int = 8
 
@@ -57,7 +57,7 @@ class Config(utils.AbstractConfig):
     task: str = 'walker_stand'
     aux_loss: str = 'None'
     logdir: str = 'logdir/'
-    device: str = 'cuda'
+    device: str = 'cuda:0'
     observe: str = 'point_cloud'
 
     def __post_init__(self):

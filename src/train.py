@@ -11,18 +11,22 @@ def parse_args():
     parser.add_argument('--loss', type=str, choices=['None', 'contrastive', 'reconstruction'], default='None')
     return parser.parse_args()
 
+def make_config(args):
+    config = Config()
+    config.task = args.task
+    config.observe = args.observe
+    config.loss = args.loss
+    return config
 
-args = parse_args()
-config = Config()
-config.task = args.task
-config.observe = args.observe
-config.loss = args.loss
-
-if args.load:
-    config = config.load(args.load / 'config')
-
-alg = RLAlg(config)
-
-if args.load:
-    alg.load(args.load)
-alg.learn()
+if __name__=="__main__":
+    args = parse_args()
+    config = make_config(args)
+    
+    if args.load:
+        config = config.load(args.load / 'config')
+    
+    alg = RLAlg(config)
+    
+    if args.load:
+        alg.load(args.load)
+    alg.learn()

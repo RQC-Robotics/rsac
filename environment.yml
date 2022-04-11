@@ -10,7 +10,6 @@ dependencies:
   - python=3.9
   - numpy
   - pip
-  - tqdm
   - pytorch=1.10
   - torchvision
   - cudatoolkit=11.3
