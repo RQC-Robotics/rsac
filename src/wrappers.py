@@ -100,7 +100,7 @@ class FrameSkip(Wrapper):
 class depthMapWrapper(Wrapper):
 
     def __init__(self, env,
-                 camera_id=1,
+                 camera_id=0,
                  height=240,
                  width=320,
                  device='cpu',
@@ -155,7 +155,7 @@ class depthMapWrapper(Wrapper):
 
 
 class Monitor(Wrapper):
-    def __init__(self, env, path, render_kwargs={'camera_id': 1}):
+    def __init__(self, env, path, render_kwargs={'camera_id': 0}):
         self.env = env
         self.path = pathlib.Path(path)
         self.render_kwargs = render_kwargs
@@ -201,7 +201,7 @@ class Monitor(Wrapper):
 class PixelsToGym(Wrapper):
     def __init__(self, env):
         super().__init__(env)
-        self.env = pixels.Wrapper(self.env, render_kwargs={'camera_id': 1, 'height': 64, 'width': 64})
+        self.env = pixels.Wrapper(self.env, render_kwargs={'camera_id': 0, 'height': 64, 'width': 64})
 
     def observation(self, timestamp):
         obs = timestamp.observation['pixels']
