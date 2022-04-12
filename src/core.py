@@ -19,7 +19,7 @@ class Config(utils.AbstractConfig):
     disclam: float = .95
     num_samples: int = 4
     action_repeat: int = 2
-    expl_noise: float = .1  # however sac doesn't require it
+    expl_noise: float = .1  # it is stated that SAC doesn't require it
 
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
@@ -51,7 +51,7 @@ class Config(utils.AbstractConfig):
 
     # PointNet
     pn_number: int = 600
-    pn_layers: tuple = (64, 128)
+    pn_layers: tuple = (64, 128, 256)
     pn_dropout: float = 0.
 
     task: str = 'walker_stand'
@@ -79,7 +79,7 @@ class RLAlg:
         self.interactions_count = 0
 
     def learn(self):
-        self.config.save(self._task_path / 'config')
+        self.config.save(self._task_path / 'config.yml')
 
         def policy(obs, state, training):
             obs = torch.from_numpy(obs[None]).to(self.agent.device)
@@ -121,7 +121,7 @@ class RLAlg:
 
     def load(self, path):
         path = pathlib.Path(path)
-        self.config = self.config.load(path / 'config')
+        self.config = self.config.load(path / 'config.yml')
         if (path / 'checkpoint').exists():
             chkp = torch.load(path / 'checkpoint')
             with torch.no_grad():

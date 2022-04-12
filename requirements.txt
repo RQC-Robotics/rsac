@@ -1,5 +1,4 @@
 numpy
-tqdm
 pytorch
 torchvision
 pytorch3d
