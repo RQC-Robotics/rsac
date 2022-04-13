@@ -68,7 +68,7 @@ class RSAC(nn.Module):
 
         #self._critic_parameters.requires_grad_(False)
         # check if target not online
-        actor_loss, dual_loss = self._policy_improvement(target_states.detach(), alpha)
+        actor_loss, dual_loss = self._policy_improvement(target_states, alpha)
         self.actor_optim.zero_grad()
         self.dual_optim.zero_grad()
         actor_loss.backward()
