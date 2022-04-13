@@ -41,7 +41,7 @@ class Config(utils.AbstractConfig):
 
     total_steps: int = 2 * 10 ** 6
     training_steps: int = 300
-    seq_len: int = 10
+    seq_len: int = 50
     eval_freq: int = 10000
     max_grad: float = 100.
     batch_size: int = 50
