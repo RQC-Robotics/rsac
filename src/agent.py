@@ -31,31 +31,31 @@ class RSAC(nn.Module):
         dist = self.actor(state)
         if training:
             action = dist.sample()
-            action = action + self._c.expl_noise*torch.randn_like(action)
         else:
             action = dist.sample([100]).mean(0)
-        action = torch.clamp(action, -1, 1)
-        return action, state
+        action = torch.clamp(action, -utils.ACT_LIM, utils.ACT_LIM)
+        prob = dist.log_prob(action).exp()
+        return action, prob, state
 
-    def step(self, obs, actions, rewards, hidden_states):
-        #self._critic_parameters.requires_grad_(True)
+    def step(self, obs, actions, rewards, probs, hidden_states):
+        assert not probs.isnan().any()
+        #it may be better to store next_obs in the buffer to not shift batch every time
+        obs, next_obs, actions, rewards, probs = map(lambda t: t[:-1], (obs, obs.roll(-1, 0), actions, rewards, probs))
         obs_emb, _ = self.encoder(obs)
-        target_obs_emb, _ = self._target_encoder(obs)
-        #zeros = torch.zeros_like(hidden_states[0], device=self.device)
+        next_obs_emb, _ = self._target_encoder(next_obs)
         states = self.cell_roll(self.cell, obs_emb, hidden_states[0], bptt=self._c.bptt)
-        target_states = self.cell_roll(self._target_cell, target_obs_emb, hidden_states[0])
+        next_states = self.cell_roll(self._target_cell, next_obs_emb, hidden_states[1])
 
         alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -20.))
         alpha = F.softplus(alpha) + 1e-8
 
-        rl_loss = self._policy_learning(states, actions, rewards, target_states, alpha)
-        auxiliary_loss = self._auxiliary_loss(obs, actions, obs_emb, target_obs_emb)
+        rl_loss = self._policy_learning(states, actions, rewards, probs, next_states, alpha)
+        auxiliary_loss = self._auxiliary_loss(obs, actions, obs_emb, next_obs_emb)
         critic_loss = rl_loss + auxiliary_loss
 
         self.critic_optim.zero_grad()
         critic_loss.backward()
         clip_grad_norm_(self._critic_parameters, self._c.max_grad)
-        # train/adv
         self.callback.add_scalar('train/auxiliary_loss', auxiliary_loss.item(), self._step)
         self.callback.add_scalar('train/critic_loss', rl_loss.item(), self._step)
         self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
@@ -77,25 +77,36 @@ class RSAC(nn.Module):
         self.update_target()
         self._step += 1
 
-    def _policy_learning(self, states, actions, rewards, target_states, alpha):
-        # pdb.set_trace()
-        target_dist = self._target_actor(target_states)
-        sampled_actions = target_dist.sample([self._c.num_samples])
-        log_prob = target_dist.log_prob(sampled_actions).unsqueeze(-1)
-        target_values = self._target_critic(target_states[None].expand(self._c.num_samples, *states.shape),
-                                            sampled_actions).min(-1, keepdim=True).values
-        target_values = target_values - alpha.detach() * log_prob
-        target_values = utils.gve(rewards, target_values.mean(0),
-                                  self._c.discount, self._c.disclam)
+    def _policy_learning(self, states, actions, rewards, behaviour_probs, next_states, alpha):
+        with torch.no_grad():  # none of ops require grads but still
+            target_dist = self._target_actor(next_states)
+            sampled_actions = target_dist.sample([self._c.num_samples])
+            log_prob = target_dist.log_prob(sampled_actions).unsqueeze(-1)
+            target_values = self._target_critic(next_states[None].expand(self._c.num_samples, *states.shape),
+                                                sampled_actions).min(-1, keepdim=True).values
+            target_values = torch.mean(target_values - alpha.detach() * log_prob, 0)
+
+            policy_probs = self._target_actor(states).log_prob(actions).exp().unsqueeze(-1)
+            assert not policy_probs.isnan().any()
+            c = torch.minimum(torch.ones_like(policy_probs), policy_probs / behaviour_probs)
+            retrace_weights = torch.cumprod(c, 0)
+            retrace_weights = torch.cat([torch.ones_like(c[0])[None], retrace_weights[:-1]])
 
         q_values = self.critic(states, actions)
-        # resids = rewards + self._c.discount*target_values.mean(0) - q_values
-        resids = q_values[:-1] - target_values
+        resids = rewards + self._c.discount*target_values - q_values
+        # GVE uses on-policy-like update from the buffer
+        # resids = q_values[:-1] - utils.gve(rewards, target_values, self._c.discount, self._c.disclam)
         discount = self._masked_discount(resids)
-        loss = discount * resids.pow(2)
+        assert not retrace_weights.requires_grad
+        if retrace_weights.isinf().any() or retrace_weights.isnan().any():
+            #debug
+            pdb.set_trace()
+        #TODO: smh clamp retrace_weights
+        loss = discount * retrace_weights * resids.pow(2)
 
         self.callback.add_scalar('train/mean_reward', rewards.mean().item(), self._step)
         self.callback.add_scalar('train/mean_value', q_values.mean().item(), self._step)
+        self.callback.add_scalar('train/mean_retrace_weight', c.mean().item(), self._step)
         return loss.mean()
 
     def _policy_improvement(self, obs, alpha):
@@ -117,7 +128,7 @@ class RSAC(nn.Module):
         dual_loss = - alpha * (log_prob.detach() + self._target_entropy)
         return actor_loss.mean(), dual_loss.mean()
 
-    def _auxiliary_loss(self, obs, actions, obs_emb, target_obs_emb):
+    def _auxiliary_loss(self, obs, actions, obs_emb, next_obs_emb):
         # todo check l2 reg
         if self._c.aux_loss == 'None':
             return torch.tensor(0., requires_grad=True)
@@ -129,17 +140,17 @@ class RSAC(nn.Module):
                 loss = (obs_pred - obs).pow(2).mean()
             return loss
         elif self._c.aux_loss == 'contrastive':
-            actions = actions[:-1].unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
-            obs_emb = obs_emb[:-self._c.spr_depth].flatten(0, 1)
+            actions = actions.unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
+            obs_emb = obs_emb[:-self._c.spr_depth+1].flatten(0, 1)
 
             pred_embeds = self.cell_roll(self.dm, actions, obs_emb)
             pred_embeds = self.projection(pred_embeds)
             pred_embeds = self.prediction(pred_embeds)
 
-            target_obs_emb = self._target_projection(target_obs_emb[1:])
-            target_obs_emb = target_obs_emb.unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
+            next_obs_emb = self._target_projection(next_obs_emb)
+            next_obs_emb = next_obs_emb.unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
 
-            contrastive_loss = - self.cos_sim(pred_embeds, target_obs_emb)
+            contrastive_loss = - self.cos_sim(pred_embeds, next_obs_emb)
             return self._c.spr_coef*contrastive_loss.mean()
 
         else:

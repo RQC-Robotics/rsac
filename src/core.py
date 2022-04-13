@@ -16,7 +16,7 @@ torch.autograd.set_detect_anomaly(True)
 @dataclass
 class Config(utils.AbstractConfig):
     discount: float = .99
-    disclam: float = .95
+    disclam: float = .0
     num_samples: int = 4
     action_repeat: int = 2
     expl_noise: float = .1  # it is stated that SAC doesn't require it
@@ -33,20 +33,20 @@ class Config(utils.AbstractConfig):
 
     critic_lr: float = 1e-3
     actor_lr: float = 1e-3
-    dual_lr: float = 1e-3
+    dual_lr: float = 1e-2
     critic_tau: float = .995
     actor_tau: float = .995
     encoder_tau: float = .995
 
     total_steps: int = 2 * 10 ** 6
     training_steps: int = 300
-    seq_len: int = 50
+    seq_len: int = 20
     eval_freq: int = 10000
     max_grad: float = 100.
-    batch_size: int = 50
+    batch_size: int = 100
     buffer_size: int = 500
-    burn_in: int = 10
-    bptt: int = 8
+    burn_in: int = 5
+    bptt: int = -1
 
 
     # PointNet
@@ -83,8 +83,9 @@ class RLAlg:
 
         def policy(obs, state, training):
             obs = torch.from_numpy(obs[None]).to(self.agent.device)
-            action, state = self.agent.policy(obs, state, training)
-            return action.cpu().detach().numpy().flatten(), state
+            action, prob, state = self.agent.policy(obs, state, training)
+            action, prob = map(lambda t: t.detach().cpu().numpy().flatten(), (action, prob))
+            return action, prob, state
 
         while self.interactions_count < self.config.total_steps:
             tr = utils.simulate(self.env, policy, True)
@@ -94,9 +95,9 @@ class RLAlg:
             dl = DataLoader(self.buffer, batch_size=self.config.batch_size)
             self.agent.train()
             for i, tr in enumerate(dl):
-                obs, actions, rewards, hidden_states = map(lambda k: tr[k].to(self.agent.device).transpose(0, 1),
-                    ('observations', 'actions', 'rewards', 'states'))
-                self.agent.step(obs, actions, rewards, hidden_states)
+                obs, actions, rewards, probs, hidden_states = map(lambda k: tr[k].to(self.agent.device).transpose(0, 1),
+                    ('observations', 'actions', 'rewards', 'probs', 'states'))
+                self.agent.step(obs, actions, rewards, probs, hidden_states)
                 if i > self.config.training_steps:
                     break
 
