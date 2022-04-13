@@ -17,9 +17,10 @@ torch.autograd.set_detect_anomaly(True)
 class Config(utils.AbstractConfig):
     discount: float = .99
     disclam: float = .0
-    num_samples: int = 4
+    num_samples: int = 1  # in expected update
     action_repeat: int = 2
-    expl_noise: float = .1  # it is stated that SAC doesn't require it
+    expl_noise: float = 0.  # it is stated that SAC doesn't require it
+    whatever: float = 0.
 
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
@@ -34,18 +35,18 @@ class Config(utils.AbstractConfig):
     critic_lr: float = 1e-3
     actor_lr: float = 1e-3
     dual_lr: float = 1e-2
-    critic_tau: float = .995
-    actor_tau: float = .995
-    encoder_tau: float = .995
+    critic_tau: float = .99
+    actor_tau: float = .99
+    encoder_tau: float = .99
 
     total_steps: int = 2 * 10 ** 6
     training_steps: int = 300
-    seq_len: int = 20
+    seq_len: int = 10
     eval_freq: int = 10000
     max_grad: float = 100.
-    batch_size: int = 100
+    batch_size: int = 50
     buffer_size: int = 500
-    burn_in: int = 5
+    burn_in: int = -1
     bptt: int = -1
 
 
@@ -83,9 +84,9 @@ class RLAlg:
 
         def policy(obs, state, training):
             obs = torch.from_numpy(obs[None]).to(self.agent.device)
-            action, prob, state = self.agent.policy(obs, state, training)
-            action, prob = map(lambda t: t.detach().cpu().numpy().flatten(), (action, prob))
-            return action, prob, state
+            action, log_prob, state = self.agent.policy(obs, state, training)
+            action, log_prob = map(lambda t: t.detach().cpu().numpy().flatten(), (action, log_prob))
+            return action, log_prob, state
 
         while self.interactions_count < self.config.total_steps:
             tr = utils.simulate(self.env, policy, True)
@@ -95,17 +96,16 @@ class RLAlg:
             dl = DataLoader(self.buffer, batch_size=self.config.batch_size)
             self.agent.train()
             for i, tr in enumerate(dl):
-                obs, actions, rewards, probs, hidden_states = map(lambda k: tr[k].to(self.agent.device).transpose(0, 1),
-                    ('observations', 'actions', 'rewards', 'probs', 'states'))
-                self.agent.step(obs, actions, rewards, probs, hidden_states)
+                obs, actions, rewards, log_probs, hidden_states = map(lambda k: tr[k].to(self.agent.device).transpose(0, 1),
+                    ('observations', 'actions', 'rewards', 'log_probs', 'states'))
+                self.agent.step(obs, actions, rewards, log_probs, hidden_states)
                 if i > self.config.training_steps:
                     break
 
             if self.interactions_count % self.config.eval_freq == 0:
                 self.agent.eval()
-                scores = [utils.simulate(self.env, policy, False)['rewards'].sum() for _ in range(5)]
-                score = np.mean(scores)
-                self.callback.add_scalar('test/eval_reward', score, self.interactions_count)
+                scores = [utils.simulate(self.env, policy, False)['rewards'].sum() for _ in range(10)]
+                self.callback.add_scalar('test/eval_reward', np.mean(scores), self.interactions_count)
                 self.callback.add_scalar('test/eval_std', np.std(scores), self.interactions_count)
 
             if self.interactions_count % (5*self.config.eval_freq) == 0:

@@ -26,36 +26,40 @@ class RSAC(nn.Module):
         if not torch.is_tensor(state):
             state = self.init_hidden(obs.size(0))
         # test with targets instead of online networks
-        obs, _ = self.encoder(obs)
-        state = self.cell(obs, state)
-        dist = self.actor(state)
+        # obs, _ = self.encoder(obs)
+        # state = self.cell(obs, state)
+        # dist = self.actor(state)
+        obs, _ = self._target_encoder(obs)
+        state = self._target_cell(obs, state)
+        dist = self._target_actor(state)
         if training:
             action = dist.sample()
+            action = action + self._c.expl_noise*torch.randn_like(action)
         else:
             action = dist.sample([100]).mean(0)
         action = torch.clamp(action, -utils.ACT_LIM, utils.ACT_LIM)
-        prob = dist.log_prob(action).exp()
-        return action, prob, state
+        log_prob = dist.log_prob(action)
+        return action, log_prob, state
 
-    def step(self, obs, actions, rewards, probs, hidden_states):
-        assert not probs.isnan().any()
+    def step(self, obs, actions, rewards, log_probs, hidden_states):
+        assert not log_probs.isnan().any()
         #it may be better to store next_obs in the buffer to not shift batch every time
-        obs, next_obs, actions, rewards, probs = map(lambda t: t[:-1], (obs, obs.roll(-1, 0), actions, rewards, probs))
         obs_emb, _ = self.encoder(obs)
-        next_obs_emb, _ = self._target_encoder(next_obs)
+        target_obs_emb, _ = self._target_encoder(obs)
         states = self.cell_roll(self.cell, obs_emb, hidden_states[0], bptt=self._c.bptt)
-        next_states = self.cell_roll(self._target_cell, next_obs_emb, hidden_states[1])
+        target_states = self.cell_roll(self._target_cell, target_obs_emb, hidden_states[0])
 
         alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -20.))
         alpha = F.softplus(alpha) + 1e-8
 
-        rl_loss = self._policy_learning(states, actions, rewards, probs, next_states, alpha)
-        auxiliary_loss = self._auxiliary_loss(obs, actions, obs_emb, next_obs_emb)
+        rl_loss = self._policy_learning(states, actions, rewards, log_probs, target_states, alpha.detach())
+        auxiliary_loss = self._auxiliary_loss(obs, actions, obs_emb, target_obs_emb)
         critic_loss = rl_loss + auxiliary_loss
 
         self.critic_optim.zero_grad()
         critic_loss.backward()
         clip_grad_norm_(self._critic_parameters, self._c.max_grad)
+        enc_grads = utils.grads_sum(self.encoder)
         self.callback.add_scalar('train/auxiliary_loss', auxiliary_loss.item(), self._step)
         self.callback.add_scalar('train/critic_loss', rl_loss.item(), self._step)
         self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
@@ -63,60 +67,87 @@ class RSAC(nn.Module):
         self.callback.add_scalar('train/cell_grads', utils.grads_sum(self.cell), self._step)
 
         #self._critic_parameters.requires_grad_(False)
-        actor_loss, dual_loss = self._policy_improvement(states.detach(), alpha)
+        # check if target not online
+        actor_loss, dual_loss = self._policy_improvement(target_states.detach(), alpha)
         self.actor_optim.zero_grad()
         self.dual_optim.zero_grad()
         actor_loss.backward()
         dual_loss.backward()
         clip_grad_norm_(self.actor.parameters(), self._c.max_grad)
+        assert enc_grads == utils.grads_sum(self.encoder)
         self.callback.add_scalar('train/actor_loss', actor_loss.item(), self._step)
         self.callback.add_scalar('train/actor_grads', utils.grads_sum(self.actor), self._step)
         self.critic_optim.step()
         self.actor_optim.step()
         self.dual_optim.step()
-        self.update_target()
+        self.update_targets()
         self._step += 1
 
-    def _policy_learning(self, states, actions, rewards, behaviour_probs, next_states, alpha):
+    def _policy_learning(self, states, actions, rewards, behaviour_log_probs, target_states, alpha):
         with torch.no_grad():  # none of ops require grads but still
+            next_states = target_states.roll(-1, 0)  # truncate last
             target_dist = self._target_actor(next_states)
             sampled_actions = target_dist.sample([self._c.num_samples])
-            log_prob = target_dist.log_prob(sampled_actions).unsqueeze(-1)
-            target_values = self._target_critic(next_states[None].expand(self._c.num_samples, *states.shape),
+            next_log_probs = target_dist.log_prob(sampled_actions).unsqueeze(-1)
+            next_values = self._target_critic(next_states[None].expand(self._c.num_samples, *states.shape),
                                                 sampled_actions).min(-1, keepdim=True).values
-            target_values = torch.mean(target_values - alpha.detach() * log_prob, 0)
+            next_values = torch.mean(next_values - alpha * next_log_probs, 0)
+            # next_values = next_values.mean(0)
+            values = self._target_critic(target_states, actions).min(-1, keepdim=True).values
+            log_probs = self._target_actor(target_states).log_prob(actions).unsqueeze(-1)
 
-            policy_probs = self._target_actor(states).log_prob(actions).exp().unsqueeze(-1)
-            assert not policy_probs.isnan().any()
-            c = torch.minimum(torch.ones_like(policy_probs), policy_probs / behaviour_probs)
-            retrace_weights = torch.cumprod(c, 0)
-            retrace_weights = torch.cat([torch.ones_like(c[0])[None], retrace_weights[:-1]])
+            resids = rewards + self._c.whatever * alpha*log_probs + self._c.discount*next_values - values
+            discount = self._masked_discount(resids)
+            cs = torch.minimum(torch.ones_like(log_probs), (log_probs - behaviour_log_probs).exp())
+            cs = torch.cat((torch.ones_like(cs[0])[None], cs[1:]))
+            retrace_weights = torch.cumprod(cs, 0)
+
+            resids = discount * retrace_weights * resids
+
+            resids = torch.cumsum(resids[:-1].flip(0), 0)
+
+            target_values = values[:-1] + resids.flip(0)
+
+
+
+
+
+
+            # policy_probs = self._target_actor(states).log_prob(actions).exp().unsqueeze(-1)
+            # assert not policy_probs.isnan().any()
+            # c = torch.minimum(torch.ones_like(policy_probs), policy_probs / behaviour_probs)
+            # c = torch.cat((torch.ones_like(c[0])[None], c[:-1]))
+            # retrace_weights = torch.cumprod(c, 0)
 
         q_values = self.critic(states, actions)
-        resids = rewards + self._c.discount*target_values - q_values
-        # GVE uses on-policy-like update from the buffer
+        # resids = rewards + self._c.discount*target_values - q_values
+        # GVE use on-policy update from the buffer
         # resids = q_values[:-1] - utils.gve(rewards, target_values, self._c.discount, self._c.disclam)
-        discount = self._masked_discount(resids)
-        assert not retrace_weights.requires_grad
-        if retrace_weights.isinf().any() or retrace_weights.isnan().any():
-            #debug
-            pdb.set_trace()
+        # discount = self._masked_discount(resids)
+        # assert not retrace_weights.requires_grad
+        # if retrace_weights.isinf().any() or retrace_weights.isnan().any():
+        #     debug
+            # pdb.set_trace()
         #TODO: smh clamp retrace_weights
-        loss = discount * retrace_weights * resids.pow(2)
+        # loss = discount * retrace_weights * resids.pow(2)
+
+        loss = (q_values[:-1] - target_values).pow(2)
 
         self.callback.add_scalar('train/mean_reward', rewards.mean().item(), self._step)
         self.callback.add_scalar('train/mean_value', q_values.mean().item(), self._step)
-        self.callback.add_scalar('train/mean_retrace_weight', c.mean().item(), self._step)
+        self.callback.add_scalar('train/geom_mean_retrace_weight', (retrace_weights[-1] ** (1 / len(cs))).mean().item(), self._step)
         return loss.mean()
 
-    def _policy_improvement(self, obs, alpha):
+    def _policy_improvement(self, states, alpha):
         # pdb.set_trace()
-        dist = self.actor(obs)
+        assert not states.requires_grad
+        dist = self.actor(states)
         actions = dist.rsample([self._c.num_samples])
         log_prob = dist.log_prob(actions)
-        self.critic.requires_grad_(False)
-        q_values = self.critic(obs[None].expand(self._c.num_samples, *obs.shape), actions).min(-1).values
-        self.critic.requires_grad_(True)
+        # self.critic.requires_grad_(False)
+        # q_values = self.critic(obs[None].expand(self._c.num_samples, *obs.shape), actions).min(-1).values
+        # self.critic.requires_grad_(True)
+        q_values = self._target_critic(states[None].expand(self._c.num_samples, *states.shape), actions).min(-1).values
 
         with torch.no_grad():
             ent = -log_prob.mean()
@@ -128,7 +159,7 @@ class RSAC(nn.Module):
         dual_loss = - alpha * (log_prob.detach() + self._target_entropy)
         return actor_loss.mean(), dual_loss.mean()
 
-    def _auxiliary_loss(self, obs, actions, obs_emb, next_obs_emb):
+    def _auxiliary_loss(self, obs, actions, obs_emb, target_obs_emb):
         # todo check l2 reg
         if self._c.aux_loss == 'None':
             return torch.tensor(0., requires_grad=True)
@@ -140,17 +171,17 @@ class RSAC(nn.Module):
                 loss = (obs_pred - obs).pow(2).mean()
             return loss
         elif self._c.aux_loss == 'contrastive':
-            actions = actions.unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
-            obs_emb = obs_emb[:-self._c.spr_depth+1].flatten(0, 1)
+            actions = actions[:-1].unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
+            obs_emb = obs_emb[:-self._c.spr_depth].flatten(0, 1)
 
             pred_embeds = self.cell_roll(self.dm, actions, obs_emb)
             pred_embeds = self.projection(pred_embeds)
             pred_embeds = self.prediction(pred_embeds)
 
-            next_obs_emb = self._target_projection(next_obs_emb)
-            next_obs_emb = next_obs_emb.unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
+            target_obs_emb = self._target_projection(target_obs_emb[1:])
+            target_obs_emb = target_obs_emb.unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
 
-            contrastive_loss = - self.cos_sim(pred_embeds, next_obs_emb)
+            contrastive_loss = - self.cos_sim(pred_embeds, target_obs_emb)
             return self._c.spr_coef*contrastive_loss.mean()
 
         else:
@@ -166,12 +197,12 @@ class RSAC(nn.Module):
             states.append(state)
         return torch.stack(states)
 
-    def _masked_discount(self, tensor):
-        m = min(max(self._c.burn_in, 0), tensor.size(0))
-        mask = torch.cat([torch.zeros(m, device=self.device), torch.ones(tensor.size(0) - m, device=self.device)])
-        discount = self._c.discount ** torch.arange(tensor.size(0), device=self.device)
+    def _masked_discount(self, x, lenght=-1):
+        lenght = min(max(lenght, 0), x.size(0))
+        mask = torch.cat([torch.zeros(lenght, device=self.device), torch.ones(x.size(0) - lenght, device=self.device)])
+        discount = self._c.discount ** torch.arange(x.size(0), device=self.device)
         mask = mask * discount
-        while mask.ndimension() != tensor.ndimension():
+        while mask.ndimension() != x.ndimension():
             mask = mask.unsqueeze(-1)
         return mask
 
@@ -231,7 +262,7 @@ class RSAC(nn.Module):
         self.to(self.device)
 
     @torch.no_grad()
-    def update_target(self):
+    def update_targets(self):
         utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
         utils.soft_update(self._target_projection, self.projection, self._c.encoder_tau)
         utils.soft_update(self._target_cell, self.cell, self._c.critic_tau)
