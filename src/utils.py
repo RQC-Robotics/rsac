@@ -44,19 +44,19 @@ def simulate(env, policy, training):
     obs = env.reset()
     done = False
     prev_state = None
-    observations, actions, rewards, probs, states = [], [], [], [], []  # states=recurrent hidden
+    observations, actions, rewards, log_probs, states = [], [], [], [], []  # states=recurrent hidden
     while not done:
         if torch.is_tensor(prev_state):
             states.append(prev_state.detach().cpu().flatten().numpy())
-            action, prob, prev_state = policy(obs, prev_state, training)
+            action, log_prob, prev_state = policy(obs, prev_state, training)
         else:
-            action, prob, prev_state = policy(obs, prev_state, training)
+            action, log_prob, prev_state = policy(obs, prev_state, training)
             states.append(torch.zeros_like(prev_state).detach().cpu().flatten().numpy())
         new_obs, reward, done, _ = env.step(action)
         observations.append(obs)
         actions.append(action)
         rewards.append([reward])
-        probs.append(prob)
+        log_probs.append(log_prob)
         obs = new_obs
 
     tr = dict(
@@ -64,7 +64,7 @@ def simulate(env, policy, training):
         actions=actions,
         rewards=rewards,
         states=states,
-        probs=probs,
+        log_probs=log_probs,
     )
     for k, v in tr.items():
         tr[k] = np.stack(v)
