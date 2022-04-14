@@ -6,8 +6,9 @@ from .utils import PointCloudGenerator
 import ctypes
 import pathlib
 from collections import defaultdict
-from dm_control.mujoco.wrapper import MjvOption
-from dm_control.suite.wrappers import pixels
+from dm_control.mujoco import wrapper
+from dm_control.mujoco.engine import Camera
+from dm_control.mujoco.wrapper.mjbindings import enums
 
 
 class Wrapper:
@@ -138,7 +139,7 @@ class depthMapWrapper(Wrapper):
         return pc
 
     def _prepare_scene(self):
-        scene = MjvOption()
+        scene = wrapper.MjvOption()
         scene.flags = (ctypes.c_uint8*22)(0)
 
         return scene
@@ -201,7 +202,7 @@ class Monitor(Wrapper):
 class PixelsToGym(Wrapper):
     def __init__(self, env):
         super().__init__(env)
-        self.env = pixels.Wrapper(self.env, render_kwargs={'camera_id': 0, 'height': 64, 'width': 64})
+        self.env = wrapper.pixels.Wrapper(self.env, render_kwargs={'camera_id': 0, 'height': 64, 'width': 64})
 
     def observation(self, timestamp):
         obs = timestamp.observation['pixels']
@@ -213,3 +214,61 @@ class PixelsToGym(Wrapper):
     def observation_space(self):
         # correspondent space have to be extracted from the dm_control API -> gym API
         return Box(low=0., high=1., shape=(64, 64, 3))
+
+
+import numpy as np
+from src.wrappers import Wrapper
+from dm_control.mujoco.engine import Camera
+from dm_control.mujoco import wrapper
+from dm_control.mujoco.wrapper.mjbindings import enums
+
+
+class PointcloudWrapper(Wrapper):
+    def __init__(self, env, render_kwargs=None, threshold=10):
+        self._assert_kwargs(render_kwargs)
+        super().__init__(env)
+
+        self.render_kwargs = render_kwargs or dict(camera_id=0)
+        self.scene_option = wrapper.MjvOption()
+        self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0  # wrong segmentation for some envs
+        self.threshold = threshold
+
+    def observation(self, timestamp):
+        depth_map = self.env.physics.render(depth=True, **self.render_kwargs)
+        inv_mat = self.inverse_matrix()
+        width = self.render_kwargs.get('width', 320)
+        height = self.render_kwargs.get('height', 240)
+        plane = np.concatenate((np.mgrid[:height, :width], depth_map[None]))
+        point_cloud = np.einsum('ij, jkl->kli', inv_mat, plane).reshape(-1, 3)
+        mask = self._segmentation_mask()
+        # z-axis mask to fix poor segmentation
+        z_mask = point_cloud[..., 2] < self.threshold
+        return point_cloud[mask & z_mask]
+
+    def inverse_matrix(self):
+        # one could reuse the matrix if camera remains static
+        camera = Camera(self.env.physics, **self.render_kwargs)
+        image, focal, _, _ = camera.matrices()
+        cx = image[0, 2]
+        cy = image[1, 2]
+        f_inv = 1. / focal[1, 1]
+        inv_mat = np.array([
+            [-f_inv, f_inv ** 2, cy * f_inv ** 2 + cx * f_inv],
+            [0, f_inv, -f_inv * cy],
+            [0, 0, 1.]
+        ])
+        return inv_mat
+
+    def _segmentation_mask(self):
+        seg = self.env.physics.render(segmentation=True, **self.render_kwargs, scene_option=self.scene_option)
+        model_id, obj_type = np.split(seg, 2, -1)
+        return (obj_type != -1).flatten()
+
+    @staticmethod
+    def _assert_kwargs(kwargs):
+        if kwargs is None:
+            return
+        keys = kwargs.keys()
+        assert 'camera_id' in keys
+        assert 'depth' not in keys
+        assert 'segmentation' not in keys

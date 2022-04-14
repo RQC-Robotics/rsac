@@ -164,6 +164,18 @@ def gve(rewards, values, discount, disclam):
     return torch.stack(target_values).flip(0)
 
 
+def retrace(values, resids, cs, discount, disclam):
+    cs = torch.cat((cs[1:], torch.ones_like(cs[0])[None]))
+    cs *= disclam
+    resids, cs = map(lambda t: t.flip(0), (resids, cs))
+    deltas = []
+    last_val = torch.zeros_like(resids[0])
+    for r, c in zip(resids, cs):
+        last_val = r + last_val * discount * c
+        deltas.append(last_val)
+    return values + torch.stack(deltas).flip(0)
+
+
 @dataclasses.dataclass
 class AbstractConfig(ABC):
     def save(self, file_path):
