@@ -216,15 +216,8 @@ class PixelsToGym(Wrapper):
         return Box(low=0., high=1., shape=(64, 64, 3))
 
 
-import numpy as np
-from src.wrappers import Wrapper
-from dm_control.mujoco.engine import Camera
-from dm_control.mujoco import wrapper
-from dm_control.mujoco.wrapper.mjbindings import enums
-
-
-class PointcloudWrapper(Wrapper):
-    def __init__(self, env, render_kwargs=None, threshold=10):
+class PointCloudWrapper(Wrapper):
+    def __init__(self, env, pn_number=1000, render_kwargs=None, threshold=10):
         self._assert_kwargs(render_kwargs)
         super().__init__(env)
 
@@ -232,6 +225,7 @@ class PointcloudWrapper(Wrapper):
         self.scene_option = wrapper.MjvOption()
         self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0  # wrong segmentation for some envs
         self.threshold = threshold
+        self.pn_number = pn_number
 
     def observation(self, timestamp):
         depth_map = self.env.physics.render(depth=True, **self.render_kwargs)
@@ -243,7 +237,8 @@ class PointcloudWrapper(Wrapper):
         mask = self._segmentation_mask()
         # z-axis mask to fix poor segmentation
         z_mask = point_cloud[..., 2] < self.threshold
-        return point_cloud[mask & z_mask]
+        selected_points = point_cloud[mask & z_mask]
+        return self._to_fixed_number(selected_points)
 
     def inverse_matrix(self):
         # one could reuse the matrix if camera remains static
@@ -263,6 +258,13 @@ class PointcloudWrapper(Wrapper):
         seg = self.env.physics.render(segmentation=True, **self.render_kwargs, scene_option=self.scene_option)
         model_id, obj_type = np.split(seg, 2, -1)
         return (obj_type != -1).flatten()
+
+    def _to_fixed_number(self, pc):
+        n = len(pc)
+        if n < self.pn_number:
+            return np.pad(pc, ((0, self.pn_number - pc.shape[-2]), (0, 0)), mode='edge')
+        else:
+            return np.random.permutation(pc)[:self.pn_number]
 
     @staticmethod
     def _assert_kwargs(kwargs):

@@ -139,7 +139,8 @@ class RLAlg:
         elif self.config.observe == 'pixels':
             env = wrappers.PixelsToGym(env)
         elif self.config.observe == 'point_cloud':
-            env = wrappers.depthMapWrapper(env, device=self.config.device, points=self.config.pn_number, camera_id=0)
+            #  env = wrappers.depthMapWrapper(env, device=self.config.device, points=self.config.pn_number, camera_id=0)
+            env = wrappers.PointCloudWrapper(env, pn_number=self.config.pn_number)
         env = wrappers.FrameSkip(env, self.config.action_repeat)
         act_dim = env.action_space.shape[0]
         obs_dim = env.observation_space.shape[0]
