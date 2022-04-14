@@ -103,10 +103,9 @@ class RSAC(nn.Module):
 
             target_values = utils.retrace(values, resids, cs, self._c.discount, self._c.disclam)
 
+        target_values = utils.gve(rewards, next_values, self._c.discount, 1. - self._c.disclam)
         q_values = self.critic(states, actions)
         # GVE uses on-policy target from the buffer
-        # resids = q_values[:-1] - utils.gve(rewards, target_values, self._c.discount, self._c.disclam)
-        # discount = self._masked_discount(resids)
 
         loss = (q_values - target_values).pow(2)
 

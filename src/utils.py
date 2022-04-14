@@ -155,10 +155,10 @@ def soft_update(target, online, rho):
         pt.copy_(rho * pt + (1. - rho) * po)
 
 
-def gve(rewards, values, discount, disclam):
+def gve(rewards, next_values, discount, disclam):
     target_values = []
-    last_val = values[-1]
-    for r, v in zip(rewards[:-1].flip(0), values[1:].flip(0)):
+    last_val = next_values[-1]
+    for r, v in zip(rewards.flip(0), next_values.flip(0)):
         last_val = r + discount*(disclam*last_val + (1.-disclam)*v)
         target_values.append(last_val)
     return torch.stack(target_values).flip(0)
