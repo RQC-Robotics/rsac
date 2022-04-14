@@ -16,8 +16,10 @@ def parse_args():
 
 
 def make_config(args):
+    fields = vars(args).copy()
+    del fields['load']
     config = Config()
-    return dataclasses.replace(config, **vars(args))
+    return dataclasses.replace(config, **fields)
 
 
 if __name__ == "__main__":
