@@ -59,7 +59,6 @@ class RSAC(nn.Module):
         self.critic_optim.zero_grad()
         critic_loss.backward()
         clip_grad_norm_(self._critic_parameters, self._c.max_grad)
-        enc_grads = utils.grads_sum(self.encoder)
         self.callback.add_scalar('train/auxiliary_loss', auxiliary_loss.item(), self._step)
         self.callback.add_scalar('train/critic_loss', rl_loss.item(), self._step)
         self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
@@ -74,7 +73,6 @@ class RSAC(nn.Module):
         actor_loss.backward()
         dual_loss.backward()
         clip_grad_norm_(self.actor.parameters(), self._c.max_grad)
-        assert enc_grads == utils.grads_sum(self.encoder)
         self.callback.add_scalar('train/actor_loss', actor_loss.item(), self._step)
         self.callback.add_scalar('train/actor_grads', utils.grads_sum(self.actor), self._step)
         self.critic_optim.step()
@@ -84,58 +82,37 @@ class RSAC(nn.Module):
         self._step += 1
 
     def _policy_learning(self, states, actions, rewards, behaviour_log_probs, target_states, alpha):
+        states, actions, rewards, behaviour_log_probs, target_states, next_states = \
+            map(lambda t: t[:-1],
+                (states, actions, rewards, behaviour_log_probs, target_states, target_states.roll(-1, 0)))
+
         with torch.no_grad():  # none of ops require grads but still
-            next_states = target_states.roll(-1, 0)  # truncate last
             target_dist = self._target_actor(next_states)
             sampled_actions = target_dist.sample([self._c.num_samples])
             next_log_probs = target_dist.log_prob(sampled_actions).unsqueeze(-1)
             next_values = self._target_critic(next_states[None].expand(self._c.num_samples, *states.shape),
-                                                sampled_actions).min(-1, keepdim=True).values
+                                              sampled_actions).min(-1, keepdim=True).values
             next_values = torch.mean(next_values - alpha * next_log_probs, 0)
-            # next_values = next_values.mean(0)
             values = self._target_critic(target_states, actions).min(-1, keepdim=True).values
             log_probs = self._target_actor(target_states).log_prob(actions).unsqueeze(-1)
 
-            resids = rewards + self._c.whatever * alpha*log_probs + self._c.discount*next_values - values
-            discount = self._masked_discount(resids)
+            resids = rewards + self._c.munchausen * torch.clamp(alpha*log_probs, min=-1., max=0.) \
+                     + self._c.discount*next_values - values
+
             cs = torch.minimum(torch.ones_like(log_probs), (log_probs - behaviour_log_probs).exp())
-            cs = torch.cat((torch.ones_like(cs[0])[None], cs[1:]))
-            retrace_weights = torch.cumprod(cs, 0)
 
-            resids = discount * retrace_weights * resids
-
-            resids = torch.cumsum(resids[:-1].flip(0), 0)
-
-            target_values = values[:-1] + resids.flip(0)
-
-
-
-
-
-
-            # policy_probs = self._target_actor(states).log_prob(actions).exp().unsqueeze(-1)
-            # assert not policy_probs.isnan().any()
-            # c = torch.minimum(torch.ones_like(policy_probs), policy_probs / behaviour_probs)
-            # c = torch.cat((torch.ones_like(c[0])[None], c[:-1]))
-            # retrace_weights = torch.cumprod(c, 0)
+            target_values = utils.retrace(values, resids, cs, self._c.discount, self._c.disclam)
 
         q_values = self.critic(states, actions)
-        # resids = rewards + self._c.discount*target_values - q_values
-        # GVE use on-policy update from the buffer
+        # GVE uses on-policy target from the buffer
         # resids = q_values[:-1] - utils.gve(rewards, target_values, self._c.discount, self._c.disclam)
         # discount = self._masked_discount(resids)
-        # assert not retrace_weights.requires_grad
-        # if retrace_weights.isinf().any() or retrace_weights.isnan().any():
-        #     debug
-            # pdb.set_trace()
-        #TODO: smh clamp retrace_weights
-        # loss = discount * retrace_weights * resids.pow(2)
 
-        loss = (q_values[:-1] - target_values).pow(2)
+        loss = (q_values - target_values).pow(2)
 
         self.callback.add_scalar('train/mean_reward', rewards.mean().item(), self._step)
         self.callback.add_scalar('train/mean_value', q_values.mean().item(), self._step)
-        self.callback.add_scalar('train/geom_mean_retrace_weight', (retrace_weights[-1] ** (1 / len(cs))).mean().item(), self._step)
+        self.callback.add_scalar('train/mean_retrace_weight', cs.mean().item(), self._step)
         return loss.mean()
 
     def _policy_improvement(self, states, alpha):
@@ -197,9 +174,9 @@ class RSAC(nn.Module):
             states.append(state)
         return torch.stack(states)
 
-    def _masked_discount(self, x, lenght=-1):
-        lenght = min(max(lenght, 0), x.size(0))
-        mask = torch.cat([torch.zeros(lenght, device=self.device), torch.ones(x.size(0) - lenght, device=self.device)])
+    def _masked_discount(self, x, length=-1):
+        length = min(max(length, 0), x.size(0))
+        mask = torch.cat([torch.zeros(length, device=self.device), torch.ones(x.size(0) - length, device=self.device)])
         discount = self._c.discount ** torch.arange(x.size(0), device=self.device)
         mask = mask * discount
         while mask.ndimension() != x.ndimension():

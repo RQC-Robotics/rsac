@@ -16,11 +16,11 @@ torch.autograd.set_detect_anomaly(True)
 @dataclass
 class Config(utils.AbstractConfig):
     discount: float = .99
-    disclam: float = .0
-    num_samples: int = 1  # in expected update
+    disclam: float = 1.
+    num_samples: int = 4
     action_repeat: int = 2
-    expl_noise: float = 0.  # it is stated that SAC doesn't require it
-    whatever: float = 0.
+    expl_noise: float = 0.  # however SAC doesn't require it
+    munchausen: float = .1
 
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
@@ -35,9 +35,9 @@ class Config(utils.AbstractConfig):
     critic_lr: float = 1e-3
     actor_lr: float = 1e-3
     dual_lr: float = 1e-2
-    critic_tau: float = .99
-    actor_tau: float = .99
-    encoder_tau: float = .99
+    critic_tau: float = .995
+    actor_tau: float = .995
+    encoder_tau: float = .995
 
     total_steps: int = 2 * 10 ** 6
     training_steps: int = 300
@@ -61,9 +61,9 @@ class Config(utils.AbstractConfig):
     device: str = 'cuda'
     observe: str = 'point_cloud'
 
-    def __post_init__(self):
-        spi = self.training_steps * self.batch_size * self.seq_len / 1000.
-        #print(f'Samples per insert (SPI): {spi: .1f}')
+    # def __post_init__(self):
+    #     spi = self.training_steps * self.batch_size * self.seq_len / 1000.
+    #     print(f'Samples per insert (SPI): {spi: .1f}')
 
 
 class RLAlg:
