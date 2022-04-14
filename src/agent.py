@@ -113,6 +113,7 @@ class RSAC(nn.Module):
         self.callback.add_scalar('train/mean_reward', rewards.mean().item(), self._step)
         self.callback.add_scalar('train/mean_value', q_values.mean().item(), self._step)
         self.callback.add_scalar('train/mean_retrace_weight', cs.mean().item(), self._step)
+        self.callback.add_scalar('train/mean_retrace_delta', (target_values - values).mean().item(), self._step)
         return loss.mean()
 
     def _policy_improvement(self, states, alpha):
