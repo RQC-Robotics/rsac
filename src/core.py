@@ -73,7 +73,7 @@ class RLAlg:
         self.env, act_dim, obs_dim = self._make_env()
         # todo decide how to remove collision of paths
         self._task_path = pathlib.Path(config.logdir).joinpath(
-            f'./{config.task}/{config.observe}/{config.aux_loss}')
+            f'./{config.task}/{config.observe}/{config.aux_loss}/gve')
         self.callback = SummaryWriter(log_dir=self._task_path)
         self.agent = RSAC(obs_dim, act_dim, config, self.callback)
         self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len)
