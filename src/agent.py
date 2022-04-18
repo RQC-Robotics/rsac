@@ -89,26 +89,27 @@ class RSAC(nn.Module):
             next_values = self._target_critic(next_states[None].expand(self._c.num_samples, *states.shape),
                                               sampled_actions).min(-1, keepdim=True).values
             next_values = torch.mean(next_values - alpha * next_log_probs, 0)
-            values = self._target_critic(target_states, actions).min(-1, keepdim=True).values
-            log_probs = self._target_actor(target_states).log_prob(actions).unsqueeze(-1)
-
-            resids = rewards + self._c.munchausen * torch.clamp(alpha*log_probs, min=-1., max=0.) \
-                     + self._c.discount*next_values - values
-
-            cs = torch.minimum(torch.ones_like(log_probs), (log_probs - behaviour_log_probs).exp())
-
-            target_values = utils.retrace(values, resids, cs, self._c.discount, self._c.disclam)
+            # values = self._target_critic(target_states, actions).min(-1, keepdim=True).values
+            # log_probs = self._target_actor(target_states).log_prob(actions).unsqueeze(-1)
+            #
+            # resids = rewards + self._c.munchausen * torch.clamp(alpha*log_probs, min=-1., max=0.) \
+            #          + self._c.discount*next_values - values
+            #
+            # cs = torch.minimum(torch.ones_like(log_probs), (log_probs - behaviour_log_probs).exp())
+            #
+            # target_values = utils.retrace(values, resids, cs, self._c.discount, self._c.disclam)
+            target_values = utils.gve(rewards, next_values, self._c.discount, 1. - self._c.disclam)
 
         # GVE uses on-policy target from the buffer
-        # target_values = utils.gve(rewards, next_values, self._c.discount, 1. - self._c.disclam)
+        #target_values = utils.gve(rewards, next_values, self._c.discount, 1. - self._c.disclam)
         q_values = self.critic(states, actions)
 
         loss = (q_values - target_values).pow(2)
 
         self.callback.add_scalar('train/mean_reward', rewards.mean().item(), self._step)
         self.callback.add_scalar('train/mean_value', q_values.mean().item(), self._step)
-        self.callback.add_scalar('train/mean_retrace_weight', cs.mean().item(), self._step)
-        self.callback.add_scalar('train/mean_retrace_delta', (target_values - values).mean().item(), self._step)
+        #self.callback.add_scalar('train/mean_retrace_weight', cs.mean().item(), self._step)
+        #self.callback.add_scalar('train/mean_retrace_delta', (target_values - values).mean().item(), self._step)
         return loss.mean()
 
     def _policy_improvement(self, states, alpha):
