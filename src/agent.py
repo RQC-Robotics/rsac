@@ -105,6 +105,7 @@ class RSAC(nn.Module):
         q_values = self.critic(states, actions)
 
         loss = (q_values - target_values).pow(2)
+        loss = self._masked_discount(loss, self._c.burn_in)*loss
 
         self.callback.add_scalar('train/mean_reward', rewards.mean().item(), self._step)
         self.callback.add_scalar('train/mean_value', q_values.mean().item(), self._step)
