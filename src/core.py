@@ -34,7 +34,7 @@ class Config(utils.AbstractConfig):
 
     critic_lr: float = 1e-3
     actor_lr: float = 1e-3
-    dual_lr: float = 1e-3
+    dual_lr: float = 1e-2
     critic_tau: float = .995
     actor_tau: float = .995
     encoder_tau: float = .995
@@ -45,7 +45,7 @@ class Config(utils.AbstractConfig):
     eval_freq: int = 10000
     max_grad: float = 100.
     batch_size: int = 50
-    buffer_size: int = 500
+    buffer_size: int = 1000
     burn_in: int = -1
     bptt: int = -1
 
