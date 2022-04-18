@@ -2,6 +2,9 @@ import argparse
 import pathlib
 from .core import RLAlg, Config
 import dataclasses
+import os
+
+os.environ['MUJOCO_GL'] = 'egl'
 
 
 def parse_args():

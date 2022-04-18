@@ -25,10 +25,6 @@ class RSAC(nn.Module):
     def policy(self, obs, state, training):
         if not torch.is_tensor(state):
             state = self.init_hidden(obs.size(0))
-        # test with targets instead of online networks
-        # obs, _ = self.encoder(obs)
-        # state = self.cell(obs, state)
-        # dist = self.actor(state)
         obs, _ = self._target_encoder(obs)
         state = self._target_cell(obs, state)
         dist = self._target_actor(state)
@@ -103,9 +99,9 @@ class RSAC(nn.Module):
 
             target_values = utils.retrace(values, resids, cs, self._c.discount, self._c.disclam)
 
-        target_values = utils.gve(rewards, next_values, self._c.discount, 1. - self._c.disclam)
-        q_values = self.critic(states, actions)
         # GVE uses on-policy target from the buffer
+        # target_values = utils.gve(rewards, next_values, self._c.discount, 1. - self._c.disclam)
+        q_values = self.critic(states, actions)
 
         loss = (q_values - target_values).pow(2)
 
@@ -209,9 +205,9 @@ class RSAC(nn.Module):
             self.encoder = models.PixelEncoder(3, emb)
             self.decoder = models.PixelDecoder(emb, 3)
         elif self._c.observe == 'point_cloud':
-            self.encoder = models.PointCloudEncoder(3, emb, self._c.pn_layers,
+            self.encoder = models.PointCloudEncoder(3, emb, layers=self._c.pn_layers,
                                                     dropout=self._c.pn_dropout)
-            self.decoder = models.PointCloudDecoder(emb, pn_number=self._c.pn_number)
+            self.decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers, pn_number=self._c.pn_number)
 
         self._log_alpha = nn.Parameter(torch.tensor(self._c.init_log_alpha).float())
         self._target_encoder, self._target_actor, self._target_critic, self._target_cell, self._target_projection \

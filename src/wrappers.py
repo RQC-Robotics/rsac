@@ -9,6 +9,7 @@ from collections import defaultdict
 from dm_control.mujoco import wrapper
 from dm_control.mujoco.engine import Camera
 from dm_control.mujoco.wrapper.mjbindings import enums
+from dm_control.suite.wrappers import pixels
 
 
 class Wrapper:
@@ -202,7 +203,7 @@ class Monitor(Wrapper):
 class PixelsToGym(Wrapper):
     def __init__(self, env):
         super().__init__(env)
-        self.env = wrapper.pixels.Wrapper(self.env, render_kwargs={'camera_id': 0, 'height': 64, 'width': 64})
+        self.env = pixels.Wrapper(self.env, render_kwargs={'camera_id': 0, 'height': 84, 'width': 84})
 
     def observation(self, timestamp):
         obs = timestamp.observation['pixels']
