@@ -232,12 +232,14 @@ class PointCloudWrapper(Wrapper):
             self._inverse_matrix = self.inverse_matrix()
             self.reuse_matrix = True
 
+        width = self.render_kwargs.get('width', 320)
+        height = self.render_kwargs.get('height', 240)
+        self._grid = np.mgrid[:height, :width]
+
     def observation(self, timestamp):
         depth_map = self.env.physics.render(depth=True, **self.render_kwargs)
         inv_mat = self.inverse_matrix()
-        width = self.render_kwargs.get('width', 320)
-        height = self.render_kwargs.get('height', 240)
-        plane = np.concatenate((np.mgrid[:height, :width], depth_map[None]))
+        plane = np.concatenate((self._grid, depth_map[None]))
         point_cloud = np.einsum('ij, jkl->kli', inv_mat, plane).reshape(-1, 3)
         mask = self._segmentation_mask()
         # z-axis mask to fix poor segmentation

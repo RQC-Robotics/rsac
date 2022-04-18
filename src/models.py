@@ -64,12 +64,11 @@ class PointCloudDecoder(nn.Module):
         self.deconvs = nn.Sequential(
             nn.Linear(in_features, pn_number*layers[0]),
             nn.Unflatten(-1, (pn_number, layers[0])),
-            act(),
         )
         for i in range(len(layers)-1):
             block = nn.Sequential(
+                act(),
                 nn.Linear(layers[i], layers[i+1]),
-                act()
             )
             self.deconvs.add_module(f'deconv{i}', block)
 
