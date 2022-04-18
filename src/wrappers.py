@@ -218,7 +218,7 @@ class PixelsToGym(Wrapper):
 
 
 class PointCloudWrapper(Wrapper):
-    def __init__(self, env, pn_number=1000, render_kwargs=None, threshold=10):
+    def __init__(self, env, pn_number=1000, render_kwargs=None, threshold=10, reuse_matrix=True):
         self._assert_kwargs(render_kwargs)
         super().__init__(env)
 
@@ -227,6 +227,10 @@ class PointCloudWrapper(Wrapper):
         self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0  # wrong segmentation for some envs
         self.threshold = threshold
         self.pn_number = pn_number
+        self.reuse_matrix = False
+        if reuse_matrix:
+            self._inverse_matrix = self.inverse_matrix()
+            self.reuse_matrix = True
 
     def observation(self, timestamp):
         depth_map = self.env.physics.render(depth=True, **self.render_kwargs)
@@ -242,9 +246,12 @@ class PointCloudWrapper(Wrapper):
         return self._to_fixed_number(selected_points)
 
     def inverse_matrix(self):
-        # one could reuse the matrix if camera remains static
+        # one could reuse the matrix if a camera remains static
+        if self.reuse_matrix:
+            return self._inverse_matrix
         camera = Camera(self.env.physics, **self.render_kwargs)
         image, focal, _, _ = camera.matrices()
+        #inv_mat1 = np.linalg.inv((image@focal)[:, :-1])
         cx = image[0, 2]
         cy = image[1, 2]
         f_inv = 1. / focal[1, 1]
