@@ -98,10 +98,9 @@ class RSAC(nn.Module):
             # cs = torch.minimum(torch.ones_like(log_probs), (log_probs - behaviour_log_probs).exp())
             #
             # target_values = utils.retrace(values, resids, cs, self._c.discount, self._c.disclam)
+            # GVE uses on-policy target from the buffer
             target_values = utils.gve(rewards, next_values, self._c.discount, 1. - self._c.disclam)
 
-        # GVE uses on-policy target from the buffer
-        #target_values = utils.gve(rewards, next_values, self._c.discount, 1. - self._c.disclam)
         q_values = self.critic(states, actions)
 
         loss = (q_values - target_values).pow(2)
