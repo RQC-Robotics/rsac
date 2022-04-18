@@ -57,17 +57,21 @@ class DummyEncoder(nn.Module):
 
 
 class PointCloudDecoder(nn.Module):
-    def __init__(self, in_features, pn_number, depth=32, act=nn.ELU):
+    def __init__(self, in_features, pn_number, layers, act=nn.ELU):
         super().__init__()
 
+        layers = layers + (3,)
         self.deconvs = nn.Sequential(
-            nn.Linear(in_features, 2*depth*pn_number),
+            nn.Linear(in_features, pn_number*layers[0]),
+            nn.Unflatten(-1, (pn_number, layers[0])),
             act(),
-            nn.Unflatten(-1, (pn_number, 2*depth)),
-            nn.Linear(2*depth, depth),
-            act(),
-            nn.Linear(depth, 3)
         )
+        for i in range(len(layers)-1):
+            block = nn.Sequential(
+                nn.Linear(layers[i], layers[i+1]),
+                act()
+            )
+            self.deconvs.add_module(f'deconv{i}', block)
 
     def forward(self, x):
         return self.deconvs(x)
@@ -118,8 +122,10 @@ class PixelEncoder(nn.Module):
             act(),
             nn.Conv2d(depth, depth, 3, 1),
             act(),
+            nn.Conv2d(depth, depth, 3, 1),
+            act(),
             nn.Flatten(),
-            nn.Linear(depth*27*27, out_features),  # 37 if size = 84, 27 if 64
+            nn.Linear(depth*35*35, out_features),
             nn.LayerNorm(out_features),
             nn.Tanh()
         )
@@ -139,9 +145,11 @@ class PixelDecoder(nn.Module):
     def __init__(self, in_features, out_channels=3, depth=32, act=nn.ELU):
         super().__init__()
         self.deconvs = nn.Sequential(
-            nn.Linear(in_features, depth*27*27),
+            nn.Linear(in_features, depth*35*35),
             act(),
-            nn.Unflatten(-1, (depth, 27, 27)),
+            nn.Unflatten(-1, (depth, 35, 35)),
+            nn.ConvTranspose2d(depth, depth, 3, 1),
+            act(),
             nn.ConvTranspose2d(depth, depth, 3, 1),
             act(),
             nn.ConvTranspose2d(depth, depth, 3, 1),
@@ -157,5 +165,5 @@ class PixelDecoder(nn.Module):
             x = x.flatten(0, 1)
         img = self.deconvs(x)
         if reshape:
-            img = img.reshape(seq_len, batch_size, 3, 64, 64)
+            img = img.reshape(seq_len, batch_size, 3, 84, 84)
         return img

@@ -20,7 +20,7 @@ class Config(utils.AbstractConfig):
     num_samples: int = 8
     action_repeat: int = 2
     expl_noise: float = 0.  # however SAC doesn't require it
-    munchausen: float = .9
+    munchausen: float = 0.
 
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
@@ -34,18 +34,18 @@ class Config(utils.AbstractConfig):
 
     critic_lr: float = 1e-3
     actor_lr: float = 1e-3
-    dual_lr: float = 1e-2
-    critic_tau: float = .99
-    actor_tau: float = .99
-    encoder_tau: float = .99
+    dual_lr: float = 1e-3
+    critic_tau: float = .995
+    actor_tau: float = .995
+    encoder_tau: float = .995
 
     total_steps: int = 2 * 10 ** 6
     training_steps: int = 300
-    seq_len: int = 20
+    seq_len: int = 50
     eval_freq: int = 10000
     max_grad: float = 100.
-    batch_size: int = 100
-    buffer_size: int = 200
+    batch_size: int = 50
+    buffer_size: int = 500
     burn_in: int = -1
     bptt: int = -1
 
@@ -57,7 +57,7 @@ class Config(utils.AbstractConfig):
 
     task: str = 'walker_stand'
     aux_loss: str = 'None'
-    logdir: str = 'logdir/'
+    logdir: str = 'logdir'
     device: str = 'cuda'
     observe: str = 'point_cloud'
 
@@ -73,7 +73,7 @@ class RLAlg:
         self.env, act_dim, obs_dim = self._make_env()
         # todo decide how to remove collision of paths
         self._task_path = pathlib.Path(config.logdir).joinpath(
-            f'./{config.task}/{config.observe}/{config.aux_loss}/gve')
+            f'./{config.task}/{config.observe}/{config.aux_loss}')
         self.callback = SummaryWriter(log_dir=self._task_path)
         self.agent = RSAC(obs_dim, act_dim, config, self.callback)
         self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len)
