@@ -17,10 +17,10 @@ torch.autograd.set_detect_anomaly(True)
 class Config(utils.AbstractConfig):
     discount: float = .99
     disclam: float = 1.
-    num_samples: int = 4
+    num_samples: int = 8
     action_repeat: int = 2
     expl_noise: float = 0.  # however SAC doesn't require it
-    munchausen: float = .1
+    munchausen: float = .9
 
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
@@ -35,24 +35,24 @@ class Config(utils.AbstractConfig):
     critic_lr: float = 1e-3
     actor_lr: float = 1e-3
     dual_lr: float = 1e-2
-    critic_tau: float = .995
-    actor_tau: float = .995
-    encoder_tau: float = .995
+    critic_tau: float = .99
+    actor_tau: float = .99
+    encoder_tau: float = .99
 
     total_steps: int = 2 * 10 ** 6
     training_steps: int = 300
-    seq_len: int = 50
+    seq_len: int = 20
     eval_freq: int = 10000
     max_grad: float = 100.
-    batch_size: int = 50
-    buffer_size: int = 500
+    batch_size: int = 100
+    buffer_size: int = 200
     burn_in: int = -1
     bptt: int = -1
 
 
     # PointNet
     pn_number: int = 600
-    pn_layers: tuple = (64, 128, 256)
+    pn_layers: tuple = (32, 32, 32, 32)
     pn_dropout: float = 0.
 
     task: str = 'walker_stand'
