@@ -61,21 +61,16 @@ class Config(utils.AbstractConfig):
     device: str = 'cuda'
     observe: str = 'point_cloud'
 
-    # def __post_init__(self):
-    #     spi = self.training_steps * self.batch_size * self.seq_len / 1000.
-    #     print(f'Samples per insert (SPI): {spi: .1f}')
-
 
 class RLAlg:
     def __init__(self, config):
 
         self.config = config
-        self.env, act_dim, obs_dim = self._make_env()
-        # todo decide how to remove collision of paths
+        self.env, obs_spec, act_spec = self._make_env()
         self._task_path = pathlib.Path(config.logdir).joinpath(
             f'./{config.task}/{config.observe}/{config.aux_loss}')
         self.callback = SummaryWriter(log_dir=self._task_path)
-        self.agent = RSAC(obs_dim, act_dim, config, self.callback)
+        self.agent = RSAC(obs_spec, act_spec, config, self.callback)
         self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len)
         self.interactions_count = 0
 
@@ -136,12 +131,11 @@ class RLAlg:
         env = utils.make_env(self.config.task)
         if self.config.observe == 'states':
             env = wrappers.StatesWrapper(env)
-        elif self.config.observe == 'pixels':
-            env = wrappers.PixelsWrapper(env)
+        elif self.config.observe in wrappers.PixelsWrapper.channels.keys():
+            env = wrappers.PixelsWrapper(env, mode=self.config.observe)
         elif self.config.observe == 'point_cloud':
-            #  env = wrappers.depthMapWrapper(env, device=self.config.device, points=self.config.pn_number, camera_id=0)
             env = wrappers.PointCloudWrapper(env, pn_number=self.config.pn_number)
+        else:
+            raise NotImplementedError
         env = wrappers.FrameSkip(env, self.config.action_repeat)
-        act_dim = env.action_spec().shape[0]
-        obs_dim = env.observation_spec().shape[0]
-        return env, act_dim, obs_dim
+        return env, env.observation_spec(), env.action_spec()
