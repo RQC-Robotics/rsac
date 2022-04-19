@@ -19,7 +19,6 @@ dependencies:
   - matplotlib
   - tensorboard
   - pip:
-    - gym
     - dm_control
     - ruamel.yaml
 prefix: /opt/conda/envs/contrastive

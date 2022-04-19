@@ -52,7 +52,7 @@ def simulate(env, policy, training):
         else:
             action, log_prob, prev_state = policy(obs, prev_state, training)
             states.append(torch.zeros_like(prev_state).detach().cpu().flatten().numpy())
-        new_obs, reward, done, _ = env.step(action)
+        new_obs, reward, done = env.step(action)
         observations.append(obs)
         actions.append(action)
         rewards.append([reward])
@@ -87,7 +87,7 @@ class TrajectoryBuffer(Dataset):
         return {k: v[start:start+self.seq_len] for k, v in tr.items()}
 
     def __len__(self):
-        return 5*len(self._data)  # just to don't sample too often from the same sequence at the begin
+        return len(self._data)
 
 
 class TanhTransform(td.transforms.TanhTransform):

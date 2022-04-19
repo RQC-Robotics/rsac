@@ -4,6 +4,5 @@ torchvision
 pytorch3d
 matplotlib
 tensorboard
-gym
 dm_control
 ruamel.yaml

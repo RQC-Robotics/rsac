@@ -114,7 +114,6 @@ class PixelEncoder(nn.Module):
         super().__init__()
 
         self.convs = nn.Sequential(
-            T.Normalize(.5, 1),
             nn.Conv2d(in_channels, depth, 3, 2),
             act(),
             nn.Conv2d(depth, depth, 3, 1),
@@ -154,7 +153,6 @@ class PixelDecoder(nn.Module):
             nn.ConvTranspose2d(depth, depth, 3, 1),
             act(),
             nn.ConvTranspose2d(depth, out_channels, 3, 2, output_padding=1),
-            T.Normalize(-.5, 1)
         )
 
     def forward(self, x):
