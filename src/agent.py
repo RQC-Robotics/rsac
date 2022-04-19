@@ -1,6 +1,6 @@
 import torch
 import pdb
-from . import models, utils
+from . import models, utils, wrappers
 from copy import deepcopy
 from torch.nn.utils import clip_grad_norm_
 from itertools import chain
@@ -13,9 +13,9 @@ F = nn.functional
 
 
 class RSAC(nn.Module):
-    def __init__(self, obs_dim, act_dim, config, callback):
+    def __init__(self, obs_spec, act_spec, config, callback):
         super().__init__()
-        self.obs_dim, self.act_dim = obs_dim, act_dim
+        self.obs_spec, self.act_spec = obs_spec, act_spec
         self.callback = callback
         self._c = config
         self._step = 0
@@ -118,9 +118,6 @@ class RSAC(nn.Module):
         dist = self.actor(states)
         actions = dist.rsample([self._c.num_samples])
         log_prob = dist.log_prob(actions)
-        # self.critic.requires_grad_(False)
-        # q_values = self.critic(obs[None].expand(self._c.num_samples, *obs.shape), actions).min(-1).values
-        # self.critic.requires_grad_(True)
         q_values = self._target_critic(states[None].expand(self._c.num_samples, *states.shape), actions).min(-1).values
 
         with torch.no_grad():
@@ -171,9 +168,9 @@ class RSAC(nn.Module):
             states.append(state)
         return torch.stack(states)
 
-    def _masked_discount(self, x, length=-1):
-        length = min(max(length, 0), x.size(0))
-        mask = torch.cat([torch.zeros(length, device=self.device), torch.ones(x.size(0) - length, device=self.device)])
+    def _masked_discount(self, x, size=-1):
+        size = min(max(size, 0), x.size(0))
+        mask = torch.cat([torch.zeros(size, device=self.device), torch.ones(x.size(0) - size, device=self.device)])
         discount = self._c.discount ** torch.arange(x.size(0), device=self.device)
         mask = mask * discount
         while mask.ndimension() != x.ndimension():
@@ -183,6 +180,7 @@ class RSAC(nn.Module):
     def _build(self):
         emb = self._c.obs_emb_dim
         self.device = torch.device(self._c.device if torch.cuda.is_available() else 'cpu')
+        # RL
         self.cell = nn.GRUCell(emb, self._c.hidden_dim)
         self.actor = models.Actor(self._c.hidden_dim, self.act_dim, layers=self._c.actor_layers,
                                   mean_scale=self._c.mean_scale, init_std=self._c.init_std)
@@ -199,15 +197,18 @@ class RSAC(nn.Module):
         self.prediction = nn.Linear(emb, emb)
         self.cos_sim = nn.CosineSimilarity(dim=-1)
 
+        obs_dim = self.obs_spec.shape[0]
         if self._c.observe == 'states':
-            self.encoder = models.DummyEncoder(self.obs_dim, emb)
-            self.decoder = nn.Linear(emb, self.obs_dim)
-        elif self._c.observe == 'pixels':
-            self.encoder = models.PixelEncoder(3, emb)
-            self.decoder = models.PixelDecoder(emb, 3)
+            self.encoder = models.DummyEncoder(obs_dim, emb)
+            self.decoder = nn.Linear(emb, obs_dim)
+        elif self._c.observe in wrappers.PixelsWrapper.channels.keys():
+            self.encoder = models.PixelEncoder(obs_dim, emb)
+            self.decoder = models.PixelDecoder(emb, obs_dim)
         elif self._c.observe == 'point_cloud':
-            self.encoder = models.PointCloudEncoder(3, emb, layers=self._c.pn_layers,
-                                                    dropout=self._c.pn_dropout)
+            # self.encoder = models.PointCloudEncoder(3, emb, layers=self._c.pn_layers,
+            #                                         dropout=self._c.pn_dropout)
+            self.encoder = models.PointCloudEncoderGlobal(3, emb, layers=self._c.pn_layers,
+                                                          dropout=self._c.dropout, features_from_layers=(0,))
             self.decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers, pn_number=self._c.pn_number)
 
         self._log_alpha = nn.Parameter(torch.tensor(self._c.init_log_alpha).float())

@@ -129,7 +129,7 @@ class Monitor(Wrapper):
 
 
 class PixelsWrapper(Wrapper):
-    _channels = dict(rgb=3, rgbd=4, d=1, g=1)
+    channels = dict(rgb=3, rgbd=4, d=1, g=1, gd=2)
 
     def __init__(self, env, render_kwargs=None, mode='rgb'):
         super().__init__(env)
@@ -139,23 +139,24 @@ class PixelsWrapper(Wrapper):
 
     def observation(self, timestamp):
         # depth could be normalized /depth.max()
-        depth = self.physics.render(depth=True, **self.render_kwargs)
-        rgb = self.physics.render(**self.render_kwargs).astype(np.float32)
-        rgb /= 255.
-        g = rgb@self._gs_coef
+        if self.mode != 'd':
+            rgb = self.physics.render(**self.render_kwargs).astype(np.float32)
+            rgb /= 255.
         obs = ()
         if self.mode in ('rgb', 'rgbd'):
             obs += (rgb - .5,)
-        if self.mode in ('rgbd', 'd'):
+        if self.mode in ('rgbd', 'd', 'gd'):
+            depth = self.physics.render(depth=True, **self.render_kwargs)
             obs += (depth[..., np.newaxis],)
-        if self.mode == 'g':
-            obs = (g[..., np.newaxis],)
+        if self.mode in ('g', 'gd'):
+            g = rgb @ self._gs_coef
+            obs += (g[..., np.newaxis],)
         obs = np.concatenate(obs, -1)
-        return obs.transpose((2, 1, 0))
+        return obs.transpose((2, 1, 0)).astype(np.float32)
 
     def observation_spec(self):
         shape = (
-            self._channels[self.mode],
+            self.channels[self.mode],
             self.render_kwargs.get('height', 240),
             self.render_kwargs.get('width', 320)
         )
@@ -168,7 +169,7 @@ class PointCloudWrapper(Wrapper):
 
         self.render_kwargs = render_kwargs or dict(camera_id=0)
         self.scene_option = wrapper.MjvOption()
-        self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0  # wrong segmentation for some envs
+        self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0  # results in wrong segmentation for some envs
         self.pn_number = pn_number
         self.static_camera = static_camera
         self._partial_sum = None
@@ -176,13 +177,14 @@ class PointCloudWrapper(Wrapper):
             self._inverse_matrix = self.inverse_matrix()
 
     def observation(self, timestamp):
+        # scene_option shouldn't be used in depth_map however it removes contour for some envs meanwhile broking other
         depth_map = self.physics.render(depth=True, **self.render_kwargs, scene_option=self.scene_option)
         inv_mat = self._inverse_matrix if self.static_camera else self.inverse_matrix()
         point_cloud = self._get_point_cloud(inv_mat, depth_map)
         segmentation_mask = self._segmentation_mask()
         mask = self._mask(point_cloud)  # additional mask if needed
         selected_points = point_cloud[segmentation_mask & mask]
-        return self._to_fixed_number(selected_points)
+        return self._to_fixed_number(selected_points).astype(np.float32)
 
     def inverse_matrix(self):
         # one could reuse the matrix if a camera remains static

@@ -77,9 +77,10 @@ class PointCloudDecoder(nn.Module):
 
 
 class PointCloudEncoder(nn.Module):
-    def __init__(self, in_features, out_features, layers, dropout=0., act=nn.ELU):
+    def __init__(self, in_features, out_features, layers, dropout=0., act=nn.ELU, concat_input=False):
         super().__init__()
         self.convs = nn.Sequential()
+        self.concat_input = concat_input
 
         sizes = (in_features,) + layers
         for i in range(len(sizes)-1):
@@ -96,17 +97,55 @@ class PointCloudEncoder(nn.Module):
             nn.Tanh()
         )
 
-        self.soft = False
+    def forward(self, inp):
+        x = self.convs(inp)
+        values, indices = torch.max(x, -2)
+        return self.fc(values), indices
+
+
+class PointCloudEncoderGlobal(nn.Module):
+    def __init__(self, in_features, out_features, sizes, dropout=0., act=nn.ELU, features_from_layers=(0,)):
+        super().__init__()
+
+        sizes = (in_features,) + sizes
+        self.layers = nn.ModuleList()
+        for i in range(len(sizes) - 1):
+            block = nn.Sequential(
+                nn.Linear(sizes[i], sizes[i + 1]),
+                act(),
+                nn.Dropout(dropout)
+            )
+            self.layers.append(block)
+
+        if isinstance(features_from_layers, int):
+            features_from_layers = (features_from_layers, )
+        self.selected_layers = features_from_layers
+        self.fc_size = sizes[-1] * (1 + sum([sizes[i] for i in self.selected_layers]))
+
+        self.fc = nn.Sequential(
+            nn.Linear(self.fc_size, out_features),
+            nn.LayerNorm(out_features),
+            nn.Tanh()
+        )
 
     def forward(self, x):
-        x = self.convs(x)
-        # try soft sampling
-        if self.soft:
-            indices = F.gumbel_softmax(x, hard=True).argmax(-2)
-            values = torch.gather(x, -2, indices.unsqueeze(-2)).squeeze(-2)
-        else:
-            values, indices = torch.max(x, -2)
+        features = [x]
+        for layer in self.layers:
+            x = layer(x)
+            features.append(x)
+
+        values, indices = x.max(-2)
+        if len(self.selected_layers):
+            selected_features = torch.cat(
+                [self._gather(features[ind], indices) for ind in self.selected_layers],
+                -1)
+            values = torch.cat((values.unsqueeze(-1), selected_features), -1).flatten(-2)
         return self.fc(values), indices
+
+    @staticmethod
+    def _gather(features, indices):
+        indices = torch.repeat_interleave(indices.unsqueeze(-1), features.size(-1), -1)
+        return torch.gather(features, -2, indices)
 
 
 class PixelEncoder(nn.Module):
