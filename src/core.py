@@ -29,7 +29,7 @@ class Config(utils.AbstractConfig):
     init_log_alpha: float = 1.
     init_std: float = 3.
     mean_scale: float = 5.
-    spr_coef: float = .5
+    spr_coef: float = 2.
     spr_depth: int = 5
 
     critic_lr: float = 1e-3
