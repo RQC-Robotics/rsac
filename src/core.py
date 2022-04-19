@@ -135,13 +135,13 @@ class RLAlg:
     def _make_env(self):
         env = utils.make_env(self.config.task)
         if self.config.observe == 'states':
-            env = wrappers.dmWrapper(env)
+            env = wrappers.StatesWrapper(env)
         elif self.config.observe == 'pixels':
-            env = wrappers.PixelsToGym(env)
+            env = wrappers.PixelsWrapper(env)
         elif self.config.observe == 'point_cloud':
             #  env = wrappers.depthMapWrapper(env, device=self.config.device, points=self.config.pn_number, camera_id=0)
             env = wrappers.PointCloudWrapper(env, pn_number=self.config.pn_number)
         env = wrappers.FrameSkip(env, self.config.action_repeat)
-        act_dim = env.action_space.shape[0]
-        obs_dim = env.observation_space.shape[0]
+        act_dim = env.action_spec().shape[0]
+        obs_dim = env.observation_spec().shape[0]
         return env, act_dim, obs_dim

@@ -1,23 +1,17 @@
-import numpy as np
-import gym
-from gym.spaces import Box
 import torch
-from .utils import PointCloudGenerator
+import numpy as np
 import ctypes
 import pathlib
 from collections import defaultdict
 from dm_control.mujoco import wrapper
 from dm_control.mujoco.engine import Camera
 from dm_control.mujoco.wrapper.mjbindings import enums
-from dm_control.suite.wrappers import pixels
+from dm_env import specs
 
 
 class Wrapper:
-    """ Partially solves problem with  compatibility"""
-
     def __init__(self, env):
         self.env = env
-        self._observation_space, self._action_space = self._infer_spaces(env)
 
     def observation(self, timestamp):
         return timestamp
@@ -33,52 +27,43 @@ class Wrapper:
         obs = self.observation(timestamp)
         r = self.reward(timestamp)
         d = self.done(timestamp)
-        return obs, r, d, None
+        return obs, r, d
 
     def reset(self):
         return self.observation(self.env.reset())
-
-    @staticmethod
-    def _infer_spaces(env):
-        lim = float('inf')
-        spec = env.action_spec()
-        action_space = Box(low=spec.minimum.astype(np.float32), dtype=np.float32,
-                           high=spec.maximum.astype(np.float32), shape=spec.shape)
-        ar = list(env.observation_spec().values())[0]
-
-        obs_sample = np.concatenate(list(map(lambda ar: ar.generate_value() if ar.shape != () else [1],
-                                             env.observation_spec().values())))
-
-        obs_space = Box(low=-lim, high=lim, shape=obs_sample.shape, dtype=np.float32)#ar.dtype)
-        return obs_space, action_space
 
     def __getattr__(self, item):
         return getattr(self.env, item)
 
     @property
     def unwrapped(self):
-        env = self
-        while hasattr(env, 'env'):
-            env = env.env
-        return env
-
-    @property
-    def observation_space(self):
-        return self._observation_space
-
-    @property
-    def action_space(self):
-        return self._action_space
+        if hasattr(self.env, 'unwrapped'):
+            return self.env.unwrapped
+        else:
+            return self.env
 
 
-class dmWrapper(Wrapper):
+class StatesWrapper(Wrapper):
+    """ Converts OrderedDict obs to 1-dim np.ndarray[np.float32]. """
+    def __init__(self, env):
+        super().__init__(env)
+        self._observation_spec = self._infer_obs_specs(env)
+
     def observation(self, timestamp):
         obs = np.array([])
         for v in timestamp.observation.values():
             if not v.ndim:
                 v = v[None]
-            obs = np.concatenate((obs, v))
+            obs = np.concatenate((obs, v.flatten()))
         return obs.astype(np.float32)
+
+    @staticmethod
+    def _infer_obs_specs(env) -> specs.Array:
+        dim = sum((np.prod(ar.shape) for ar in env.observation_spec().values()))
+        return specs.Array(shape=(dim,), dtype=np.float32, name='states')
+
+    def observation_spec(self):
+        return self._observation_spec
 
 
 class FrameSkip(Wrapper):
@@ -89,71 +74,14 @@ class FrameSkip(Wrapper):
     def step(self, action):
         R = 0
         for i in range(self.fn):
-            next_obs, reward, done, info = self.env.step(action)
+            next_obs, reward, done= self.env.step(action)
             R += reward
             if done:
                 break
-        return np.float32(next_obs), np.float32(R), done, info  # np.float32(next_obs)
+        return np.float32(next_obs), np.float32(R), done  # np.float32(next_obs)
 
     def reset(self):
         return np.float32(self.env.reset())
-
-
-class depthMapWrapper(Wrapper):
-
-    def __init__(self, env,
-                 camera_id=0,
-                 height=240,
-                 width=320,
-                 device='cpu',
-                 return_pos=False,
-                 points=1000,
-                 ):
-        super().__init__(env)
-        self.env = env
-        self.points = points
-        self._depth_kwargs = dict(camera_id=camera_id, height=height, width=width,
-                                  depth=True, scene_option=self._prepare_scene())
-        self.return_pos = return_pos
-        self.pcg = PointCloudGenerator(**self.pc_params, device=device)
-
-    def observation(self, timestamp):
-        depth = self.env.physics.render(**self._depth_kwargs)
-        pc = self.pcg.get_PC(depth)
-        pc = self._segmentation(pc)
-        if self.return_pos:
-            pos = self.env.physics.position()
-            return pc, pos
-        return pc.detach().cpu().numpy()
-
-    def _segmentation(self, pc):
-        dist_thresh = 19
-        pc = pc[pc[..., 2] < dist_thresh] # smth like infty cutting
-        if self.points:
-            amount = pc.size(-2)
-            if amount > self.points:
-                ind = torch.randperm(amount, device=self.pcg.device)[:self.points]
-                pc = torch.index_select(pc, -2, ind)
-            elif amount < self.points:
-                zeros = torch.zeros(self.points - amount, *pc.shape[1:], device=self.pcg.device)
-                pc = torch.cat([pc, zeros])
-        return pc
-
-    def _prepare_scene(self):
-        scene = wrapper.MjvOption()
-        scene.flags = (ctypes.c_uint8*22)(0)
-
-        return scene
-
-    @property
-    def pc_params(self):
-        # device
-        fovy = self.env.physics.model.cam_fovy[0]
-        return dict(
-            camera_fovy=fovy,
-            image_height=self._depth_kwargs.get('height', 240),
-            image_width=self._depth_kwargs.get('width', 320)
-        )
 
 
 class Monitor(Wrapper):
@@ -171,7 +99,7 @@ class Monitor(Wrapper):
         obs, r, d, _ = self.env.step(action)
         #image = self._render()
         #depth = self._render(depth=True)
-        state = self.env.physics.state()
+        state = self.physics.state()
         self._data['states'].append(state)
         #self._data['depth_maps'].append(depth)
         #self._data['images'].append(image)
@@ -181,7 +109,7 @@ class Monitor(Wrapper):
     def _render(self, **kwargs):
         kw = self.render_kwargs.copy()
         kw.update(kwargs)
-        return self.env.physics.render(**kw)
+        return self.physics.render(**kw)
 
     def save(self, path_dir):
         """
@@ -200,60 +128,68 @@ class Monitor(Wrapper):
         return data
 
 
-class PixelsToGym(Wrapper):
-    def __init__(self, env):
+class PixelsWrapper(Wrapper):
+    _channels = dict(rgb=3, rgbd=4, d=1, g=1)
+
+    def __init__(self, env, render_kwargs=None, mode='rgb'):
         super().__init__(env)
-        self.env = pixels.Wrapper(self.env, render_kwargs={'camera_id': 0, 'height': 84, 'width': 84})
+        self.render_kwargs = render_kwargs or dict(camera_id=0, height=84, width=84)
+        self.mode = mode
+        self._gs_coef = np.array([0.299, 0.587, 0.114])
 
     def observation(self, timestamp):
-        obs = timestamp.observation['pixels']
-        obs = np.array(obs) / 255.
-        obs = np.array(obs)
+        # depth could be normalized /depth.max()
+        depth = self.physics.render(depth=True, **self.render_kwargs)
+        rgb = self.physics.render(**self.render_kwargs).astype(np.float32)
+        rgb /= 255.
+        g = rgb@self._gs_coef
+        obs = ()
+        if self.mode in ('rgb', 'rgbd'):
+            obs += (rgb - .5,)
+        if self.mode in ('rgbd', 'd'):
+            obs += (depth[..., np.newaxis],)
+        if self.mode == 'g':
+            obs = (g[..., np.newaxis],)
+        obs = np.concatenate(obs, -1)
         return obs.transpose((2, 1, 0))
 
-    @property
-    def observation_space(self):
-        # correspondent space have to be extracted from the dm_control API -> gym API
-        return Box(low=0., high=1., shape=(64, 64, 3))
+    def observation_spec(self):
+        shape = (
+            self._channels[self.mode],
+            self.render_kwargs.get('height', 240),
+            self.render_kwargs.get('width', 320)
+        )
+        return specs.Array(shape=shape, dtype=np.float32, name=self.mode)
 
 
 class PointCloudWrapper(Wrapper):
-    def __init__(self, env, pn_number=1000, render_kwargs=None, threshold=10, reuse_matrix=True):
-        self._assert_kwargs(render_kwargs)
+    def __init__(self, env, pn_number=1000, render_kwargs=None, static_camera=True):
         super().__init__(env)
 
         self.render_kwargs = render_kwargs or dict(camera_id=0)
         self.scene_option = wrapper.MjvOption()
         self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0  # wrong segmentation for some envs
-        self.threshold = threshold
         self.pn_number = pn_number
-        self.reuse_matrix = False
-        if reuse_matrix:
+        self.static_camera = static_camera
+        self._partial_sum = None
+        if static_camera:
             self._inverse_matrix = self.inverse_matrix()
-            self.reuse_matrix = True
-
-        width = self.render_kwargs.get('width', 320)
-        height = self.render_kwargs.get('height', 240)
-        self._grid = np.mgrid[:height, :width]
 
     def observation(self, timestamp):
-        depth_map = self.env.physics.render(depth=True, **self.render_kwargs)
-        inv_mat = self.inverse_matrix()
-        plane = np.concatenate((self._grid, depth_map[None]))
-        point_cloud = np.einsum('ij, jkl->kli', inv_mat, plane).reshape(-1, 3)
-        mask = self._segmentation_mask()
-        # z-axis mask to fix poor segmentation
-        z_mask = point_cloud[..., 2] < self.threshold
-        selected_points = point_cloud[mask & z_mask]
+        depth_map = self.physics.render(depth=True, **self.render_kwargs, scene_option=self.scene_option)
+        inv_mat = self._inverse_matrix if self.static_camera else self.inverse_matrix()
+        point_cloud = self._get_point_cloud(inv_mat, depth_map)
+        segmentation_mask = self._segmentation_mask()
+        mask = self._mask(point_cloud)  # additional mask if needed
+        selected_points = point_cloud[segmentation_mask & mask]
         return self._to_fixed_number(selected_points)
 
     def inverse_matrix(self):
         # one could reuse the matrix if a camera remains static
-        if self.reuse_matrix:
-            return self._inverse_matrix
-        camera = Camera(self.env.physics, **self.render_kwargs)
+        camera = Camera(self.physics, **self.render_kwargs)
         image, focal, _, _ = camera.matrices()
-        #inv_mat1 = np.linalg.inv((image@focal)[:, :-1])
+        inv_mat = np.linalg.inv((image@focal)[:, :-1])
+        return inv_mat
         cx = image[0, 2]
         cy = image[1, 2]
         f_inv = 1. / focal[1, 1]
@@ -265,22 +201,31 @@ class PointCloudWrapper(Wrapper):
         return inv_mat
 
     def _segmentation_mask(self):
-        seg = self.env.physics.render(segmentation=True, **self.render_kwargs, scene_option=self.scene_option)
+        seg = self.physics.render(segmentation=True, **self.render_kwargs, scene_option=self.scene_option)
         model_id, obj_type = np.split(seg, 2, -1)
         return (obj_type != -1).flatten()
 
     def _to_fixed_number(self, pc):
-        n = len(pc)
-        if n < self.pn_number:
+        if len(pc) < self.pn_number:
             return np.pad(pc, ((0, self.pn_number - pc.shape[-2]), (0, 0)), mode='edge')
         else:
             return np.random.permutation(pc)[:self.pn_number]
 
-    @staticmethod
-    def _assert_kwargs(kwargs):
-        if kwargs is None:
-            return
-        keys = kwargs.keys()
-        assert 'camera_id' in keys
-        assert 'depth' not in keys
-        assert 'segmentation' not in keys
+    def _get_point_cloud(self, mat, depth_map):
+        dot_product = lambda x, y: np.einsum('ij, jhw-> hwi', x, y)
+        if not self.static_camera or self._partial_sum is None:
+            width = self.render_kwargs.get('width', 320)
+            height = self.render_kwargs.get('height', 240)
+            grid = np.mgrid[:height, :width]
+            self._partial_sum = dot_product(mat[:, :-1], grid)
+
+        residual_sum = dot_product(mat[:, -1:], depth_map[np.newaxis])
+        return np.reshape(self._partial_sum + residual_sum, (-1, 3))
+
+    def _mask(self, point_cloud):
+        """ Heuristic to cut outliers """
+        threshold = np.quantile(point_cloud[..., 2], .99)  # assuming object is connected and compact
+        return point_cloud[..., 2] < min(threshold, 10)
+
+    def observation_spec(self):
+        return specs.Array(shape=(self.pn_number, 3), dtype=np.float32, name='point_cloud')
