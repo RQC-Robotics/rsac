@@ -77,10 +77,9 @@ class PointCloudDecoder(nn.Module):
 
 
 class PointCloudEncoder(nn.Module):
-    def __init__(self, in_features, out_features, layers, dropout=0., act=nn.ELU, concat_input=False):
+    def __init__(self, in_features, out_features, layers, dropout=0., act=nn.ELU):
         super().__init__()
         self.convs = nn.Sequential()
-        self.concat_input = concat_input
 
         sizes = (in_features,) + layers
         for i in range(len(sizes)-1):
@@ -97,8 +96,8 @@ class PointCloudEncoder(nn.Module):
             nn.Tanh()
         )
 
-    def forward(self, inp):
-        x = self.convs(inp)
+    def forward(self, x):
+        x = self.convs(x)
         values, indices = torch.max(x, -2)
         return self.fc(values), indices
 
