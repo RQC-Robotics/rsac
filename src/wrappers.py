@@ -74,11 +74,11 @@ class FrameSkip(Wrapper):
     def step(self, action):
         R = 0
         for i in range(self.fn):
-            next_obs, reward, done= self.env.step(action)
+            next_obs, reward, done = self.env.step(action)
             R += reward
             if done:
                 break
-        return np.float32(next_obs), np.float32(R), done  # np.float32(next_obs)
+        return np.float32(next_obs), np.float32(R), done
 
     def reset(self):
         return np.float32(self.env.reset())
@@ -143,12 +143,12 @@ class PixelsWrapper(Wrapper):
             rgb = self.physics.render(**self.render_kwargs).astype(np.float32)
             rgb /= 255.
         obs = ()
-        if self.mode in ('rgb', 'rgbd'):
+        if 'rgb' in self.mode:
             obs += (rgb - .5,)
-        if self.mode in ('rgbd', 'd', 'gd'):
+        if 'd' in self.mode:
             depth = self.physics.render(depth=True, **self.render_kwargs)
             obs += (depth[..., np.newaxis],)
-        if self.mode in ('g', 'gd'):
+        if 'g' in self.mode:
             g = rgb @ self._gs_coef
             obs += (g[..., np.newaxis],)
         obs = np.concatenate(obs, -1)
@@ -177,7 +177,6 @@ class PointCloudWrapper(Wrapper):
             self._inverse_matrix = self.inverse_matrix()
 
     def observation(self, timestamp):
-        # scene_option shouldn't be used in depth_map however it removes contour for some envs meanwhile broking other
         depth_map = self.physics.render(depth=True, **self.render_kwargs, scene_option=self.scene_option)
         inv_mat = self._inverse_matrix if self.static_camera else self.inverse_matrix()
         point_cloud = self._get_point_cloud(inv_mat, depth_map)
@@ -190,8 +189,8 @@ class PointCloudWrapper(Wrapper):
         # one could reuse the matrix if a camera remains static
         camera = Camera(self.physics, **self.render_kwargs)
         image, focal, _, _ = camera.matrices()
-        inv_mat = np.linalg.inv((image@focal)[:, :-1])
-        return inv_mat
+        # inv_mat = np.linalg.inv((image@focal)[:, :-1])
+        # return inv_mat
         cx = image[0, 2]
         cy = image[1, 2]
         f_inv = 1. / focal[1, 1]
@@ -208,13 +207,14 @@ class PointCloudWrapper(Wrapper):
         return (obj_type != -1).flatten()
 
     def _to_fixed_number(self, pc):
-        if len(pc) < self.pn_number:
-            return np.pad(pc, ((0, self.pn_number - pc.shape[-2]), (0, 0)), mode='edge')
+        n = len(pc)
+        if n < self.pn_number:
+            return np.pad(pc, ((0, self.pn_number - n), (0, 0)), mode='edge')
         else:
             return np.random.permutation(pc)[:self.pn_number]
 
     def _get_point_cloud(self, mat, depth_map):
-        dot_product = lambda x, y: np.einsum('ij, jhw-> hwi', x, y)
+        dot_product = lambda x, y: np.einsum('ij, jhw->hwi', x, y)
         if not self.static_camera or self._partial_sum is None:
             width = self.render_kwargs.get('width', 320)
             height = self.render_kwargs.get('height', 240)
