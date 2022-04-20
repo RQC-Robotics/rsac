@@ -50,11 +50,12 @@ class StatesWrapper(Wrapper):
         self._observation_spec = self._infer_obs_specs(env)
 
     def observation(self, timestamp):
-        obs = np.array([])
+        obs = []
         for v in timestamp.observation.values():
-            if not v.ndim:
+            if v.ndim == 0:
                 v = v[None]
-            obs = np.concatenate((obs, v.flatten()))
+            obs.append(v.flatten())
+        obs = np.concatenate(obs)
         return obs.astype(np.float32)
 
     @staticmethod
@@ -85,47 +86,20 @@ class FrameSkip(Wrapper):
 
 
 class Monitor(Wrapper):
-    def __init__(self, env, path, render_kwargs={'camera_id': 0}):
+    def __init__(self, env):
         self.env = env
-        self.path = pathlib.Path(path)
-        self.render_kwargs = render_kwargs
-        self._data = defaultdict(list)
+        self.data = defaultdict(list)
 
     def reset(self):
-        self._data = defaultdict(list)
+        self.data = defaultdict(list)
         return self.env.reset()
 
     def step(self, action):
-        obs, r, d, _ = self.env.step(action)
-        #image = self._render()
-        #depth = self._render(depth=True)
+        obs, r, d = self.env.step(action)
         state = self.physics.state()
-        self._data['states'].append(state)
-        #self._data['depth_maps'].append(depth)
-        #self._data['images'].append(image)
-        self._data['observations'].append(obs)
-        return obs, r, d, _
-
-    def _render(self, **kwargs):
-        kw = self.render_kwargs.copy()
-        kw.update(kwargs)
-        return self.physics.render(**kw)
-
-    def save(self, path_dir):
-        """
-        save data to path_dir in desired format
-        """
-        pass
-
-    @property
-    def data(self):
-        data = {}
-        for k, v in self._data.items():
-            if isinstance(v[0], np.ndarray):
-                data[k] = torch.from_numpy(np.stack(v))
-            else:
-                data[k] = torch.stack(v)
-        return data
+        self.data['states'].append(state)
+        self.data['observations'].append(obs)
+        return obs, r, d
 
 
 class PixelsWrapper(Wrapper):
@@ -138,7 +112,6 @@ class PixelsWrapper(Wrapper):
         self._gs_coef = np.array([0.299, 0.587, 0.114])
 
     def observation(self, timestamp):
-        # depth could be normalized /depth.max()
         if self.mode != 'd':
             rgb = self.physics.render(**self.render_kwargs).astype(np.float32)
             rgb /= 255.
@@ -164,7 +137,7 @@ class PixelsWrapper(Wrapper):
 
 
 class PointCloudWrapper(Wrapper):
-    def __init__(self, env, pn_number=1000, render_kwargs=None, static_camera=True):
+    def __init__(self, env, pn_number=1000, render_kwargs=None, static_camera=True, faltten=True):
         super().__init__(env)
 
         self.render_kwargs = render_kwargs or dict(camera_id=0)
@@ -175,6 +148,8 @@ class PointCloudWrapper(Wrapper):
         self._partial_sum = None
         if static_camera:
             self._inverse_matrix = self.inverse_matrix()
+
+        self.flatten = True
 
     def observation(self, timestamp):
         depth_map = self.physics.render(depth=True, **self.render_kwargs, scene_option=self.scene_option)
@@ -222,11 +197,14 @@ class PointCloudWrapper(Wrapper):
             self._partial_sum = dot_product(mat[:, :-1], grid)
 
         residual_sum = dot_product(mat[:, -1:], depth_map[np.newaxis])
-        return np.reshape(self._partial_sum + residual_sum, (-1, 3))
+        point_cloud = self._partial_sum + residual_sum
+        if self.flatten:
+            point_cloud = np.reshape(point_cloud, (-1, 3))
+        return point_cloud
 
     def _mask(self, point_cloud):
         """ Heuristic to cut outliers """
-        threshold = np.quantile(point_cloud[..., 2], .99)  # assuming object is connected and compact
+        threshold = np.quantile(point_cloud[..., 2], .99)  # tries to cut the outliers
         return point_cloud[..., 2] < min(threshold, 10)
 
     def observation_spec(self):

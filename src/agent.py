@@ -15,7 +15,8 @@ F = nn.functional
 class RSAC(nn.Module):
     def __init__(self, obs_spec, act_spec, config, callback):
         super().__init__()
-        self.obs_spec, self.act_spec = obs_spec, act_spec
+        self.obs_spec = obs_spec
+        self.act_dim = act_spec.shape[0]
         self.callback = callback
         self._c = config
         self._step = 0
