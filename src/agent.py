@@ -15,7 +15,8 @@ F = nn.functional
 class RSAC(nn.Module):
     def __init__(self, obs_spec, act_spec, config, callback):
         super().__init__()
-        self.obs_spec, self.act_spec = obs_spec, act_spec
+        self.obs_spec = obs_spec
+        self.act_dim = act_spec.shape[0]
         self.callback = callback
         self._c = config
         self._step = 0
@@ -207,8 +208,8 @@ class RSAC(nn.Module):
         elif self._c.observe == 'point_cloud':
             # self.encoder = models.PointCloudEncoder(3, emb, layers=self._c.pn_layers,
             #                                         dropout=self._c.pn_dropout)
-            self.encoder = models.PointCloudEncoderGlobal(3, emb, layers=self._c.pn_layers,
-                                                          dropout=self._c.dropout, features_from_layers=(0,))
+            self.encoder = models.PointCloudEncoderGlobal(3, emb, sizes=self._c.pn_layers,
+                                                          dropout=self._c.pn_dropout, features_from_layers=())
             self.decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers, pn_number=self._c.pn_number)
 
         self._log_alpha = nn.Parameter(torch.tensor(self._c.init_log_alpha).float())
