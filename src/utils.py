@@ -188,3 +188,9 @@ class AbstractConfig(ABC):
         with open(file_path) as f:
             config_dict = yaml.load(f)
         return dataclasses.replace(self, **config_dict)
+
+    def __post_init__(self):
+        for field in dataclasses.fields(self):
+            value = getattr(self, field.name)
+            value = field.type(value)
+            setattr(self, field.name, value)

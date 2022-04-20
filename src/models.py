@@ -35,8 +35,6 @@ class Actor(nn.Module):
     @staticmethod
     def get_dist(mu, std):
         dist = td.Normal(mu, std)
-        # TODO: find out why it gives wrong probs
-        #dist = td.transformed_distribution.TransformedDistribution(dist, td.transforms.TanhTransform(cache_size=1))
         dist = td.transformed_distribution.TransformedDistribution(dist, TanhTransform(cache_size=1))
         dist = td.Independent(dist, 1)
         return dist

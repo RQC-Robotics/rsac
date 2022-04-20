@@ -39,8 +39,6 @@ class RSAC(nn.Module):
         return action, log_prob, state
 
     def step(self, obs, actions, rewards, log_probs, hidden_states):
-        assert not log_probs.isnan().any()
-        #it may be better to store next_obs in the buffer to not shift batch every time
         obs_emb, _ = self.encoder(obs)
         target_obs_emb, _ = self._target_encoder(obs)
         states = self.cell_roll(self.cell, obs_emb, hidden_states[0], bptt=self._c.bptt)
@@ -58,12 +56,10 @@ class RSAC(nn.Module):
         clip_grad_norm_(self._critic_parameters, self._c.max_grad)
         self.callback.add_scalar('train/auxiliary_loss', auxiliary_loss.item(), self._step)
         self.callback.add_scalar('train/critic_loss', rl_loss.item(), self._step)
-        self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
-        self.callback.add_scalar('train/encoder_grads', utils.grads_sum(self.encoder), self._step)
-        self.callback.add_scalar('train/cell_grads', utils.grads_sum(self.cell), self._step)
+        # self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
+        # self.callback.add_scalar('train/encoder_grads', utils.grads_sum(self.encoder), self._step)
+        # self.callback.add_scalar('train/cell_grads', utils.grads_sum(self.cell), self._step)
 
-        #self._critic_parameters.requires_grad_(False)
-        # check if target not online
         actor_loss, dual_loss = self._policy_improvement(target_states, alpha)
         self.actor_optim.zero_grad()
         self.dual_optim.zero_grad()
@@ -71,7 +67,7 @@ class RSAC(nn.Module):
         dual_loss.backward()
         clip_grad_norm_(self.actor.parameters(), self._c.max_grad)
         self.callback.add_scalar('train/actor_loss', actor_loss.item(), self._step)
-        self.callback.add_scalar('train/actor_grads', utils.grads_sum(self.actor), self._step)
+        # self.callback.add_scalar('train/actor_grads', utils.grads_sum(self.actor), self._step)
         self.critic_optim.step()
         self.actor_optim.step()
         self.dual_optim.step()
@@ -90,16 +86,6 @@ class RSAC(nn.Module):
             next_values = self._target_critic(next_states[None].expand(self._c.num_samples, *states.shape),
                                               sampled_actions).min(-1, keepdim=True).values
             next_values = torch.mean(next_values - alpha * next_log_probs, 0)
-            # values = self._target_critic(target_states, actions).min(-1, keepdim=True).values
-            # log_probs = self._target_actor(target_states).log_prob(actions).unsqueeze(-1)
-            #
-            # resids = rewards + self._c.munchausen * torch.clamp(alpha*log_probs, min=-1., max=0.) \
-            #          + self._c.discount*next_values - values
-            #
-            # cs = torch.minimum(torch.ones_like(log_probs), (log_probs - behaviour_log_probs).exp())
-            #
-            # target_values = utils.retrace(values, resids, cs, self._c.discount, self._c.disclam)
-            # GVE uses on-policy target from the buffer
             target_values = utils.gve(rewards, next_values, self._c.discount, 1. - self._c.disclam)
 
         q_values = self.critic(states, actions)
@@ -109,13 +95,9 @@ class RSAC(nn.Module):
 
         self.callback.add_scalar('train/mean_reward', rewards.mean().item(), self._step)
         self.callback.add_scalar('train/mean_value', q_values.mean().item(), self._step)
-        #self.callback.add_scalar('train/mean_retrace_weight', cs.mean().item(), self._step)
-        #self.callback.add_scalar('train/mean_retrace_delta', (target_values - values).mean().item(), self._step)
         return loss.mean()
 
     def _policy_improvement(self, states, alpha):
-        # pdb.set_trace()
-        assert not states.requires_grad
         dist = self.actor(states)
         actions = dist.rsample([self._c.num_samples])
         log_prob = dist.log_prob(actions)
@@ -134,7 +116,7 @@ class RSAC(nn.Module):
     def _auxiliary_loss(self, obs, actions, obs_emb, target_obs_emb):
         # todo check l2 reg
         if self._c.aux_loss == 'None':
-            return torch.tensor(0., requires_grad=True)
+            return torch.tensor(0.)
         elif self._c.aux_loss == 'reconstruction':
             obs_pred = self.decoder(obs_emb)
             if self._c.observe == 'point_cloud':
@@ -208,8 +190,8 @@ class RSAC(nn.Module):
         elif self._c.observe == 'point_cloud':
             # self.encoder = models.PointCloudEncoder(3, emb, layers=self._c.pn_layers,
             #                                         dropout=self._c.pn_dropout)
-            self.encoder = models.PointCloudEncoderGlobal(3, emb, layers=self._c.pn_layers,
-                                                          dropout=self._c.dropout, features_from_layers=(0,))
+            self.encoder = models.PointCloudEncoderGlobal(3, emb, sizes=self._c.pn_layers,
+                                                          dropout=self._c.pn_dropout, features_from_layers=())
             self.decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers, pn_number=self._c.pn_number)
 
         self._log_alpha = nn.Parameter(torch.tensor(self._c.init_log_alpha).float())

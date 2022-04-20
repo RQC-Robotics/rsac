@@ -1,12 +1,10 @@
 import torch
 import numpy as np
-import ctypes
-import pathlib
-from collections import defaultdict
+from collections import defaultdict, deque
+from dm_env import specs
 from dm_control.mujoco import wrapper
 from dm_control.mujoco.engine import Camera
 from dm_control.mujoco.wrapper.mjbindings import enums
-from dm_env import specs
 
 
 class Wrapper:
@@ -85,21 +83,45 @@ class FrameSkip(Wrapper):
         return np.float32(self.env.reset())
 
 
+class FrameStack(Wrapper):
+    def __init__(self, env, frame_number: int = 1):
+        super().__init__(env)
+        self.fn = frame_number
+        self._state = None
+
+    def reset(self):
+        obs = self.env.reset()
+        self._state = deque(self.fn * [obs], maxlen=self.fn)
+        return self.observation(None)
+
+    def step(self, action):
+        obs, r, d = self.env.step(action)
+        self._state.append(obs)
+        return self.observation(None), r, d
+
+    def observation(self, timestamp):
+        return np.stack(self._state)
+
+
 class Monitor(Wrapper):
     def __init__(self, env):
         self.env = env
-        self.data = defaultdict(list)
+        self._data = defaultdict(list)
 
     def reset(self):
-        self.data = defaultdict(list)
+        self._data = defaultdict(list)
         return self.env.reset()
 
     def step(self, action):
         obs, r, d = self.env.step(action)
         state = self.physics.state()
-        self.data['states'].append(state)
-        self.data['observations'].append(obs)
+        self._data['states'].append(state)
+        self._data['observations'].append(obs)
         return obs, r, d
+
+    @property
+    def data(self):
+        return {k: np.array(v) for k, v in self._data.items()}
 
 
 class PixelsWrapper(Wrapper):
@@ -137,7 +159,7 @@ class PixelsWrapper(Wrapper):
 
 
 class PointCloudWrapper(Wrapper):
-    def __init__(self, env, pn_number=1000, render_kwargs=None, static_camera=True, faltten=True):
+    def __init__(self, env, pn_number=1000, render_kwargs=None, static_camera=True, as_pixels=False):
         super().__init__(env)
 
         self.render_kwargs = render_kwargs or dict(camera_id=0)
@@ -148,13 +170,16 @@ class PointCloudWrapper(Wrapper):
         self._partial_sum = None
         if static_camera:
             self._inverse_matrix = self.inverse_matrix()
-
-        self.flatten = True
+        self.as_pixels = as_pixels
 
     def observation(self, timestamp):
         depth_map = self.physics.render(depth=True, **self.render_kwargs, scene_option=self.scene_option)
         inv_mat = self._inverse_matrix if self.static_camera else self.inverse_matrix()
         point_cloud = self._get_point_cloud(inv_mat, depth_map)
+        if self.as_pixels:
+            # TODO: decide if segmentation or another mask is needed
+            return point_cloud
+        point_cloud = np.reshape(point_cloud, (-1, 3))
         segmentation_mask = self._segmentation_mask()
         mask = self._mask(point_cloud)  # additional mask if needed
         selected_points = point_cloud[segmentation_mask & mask]
@@ -197,14 +222,11 @@ class PointCloudWrapper(Wrapper):
             self._partial_sum = dot_product(mat[:, :-1], grid)
 
         residual_sum = dot_product(mat[:, -1:], depth_map[np.newaxis])
-        point_cloud = self._partial_sum + residual_sum
-        if self.flatten:
-            point_cloud = np.reshape(point_cloud, (-1, 3))
-        return point_cloud
+        return self._partial_sum + residual_sum
 
     def _mask(self, point_cloud):
         """ Heuristic to cut outliers """
-        threshold = np.quantile(point_cloud[..., 2], .99)  # tries to cut the outliers
+        threshold = np.quantile(point_cloud[..., 2], .99)
         return point_cloud[..., 2] < min(threshold, 10)
 
     def observation_spec(self):
