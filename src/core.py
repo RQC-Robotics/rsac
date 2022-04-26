@@ -14,10 +14,10 @@ torch.autograd.set_detect_anomaly(True)
 
 
 @dataclass
-class Config(utils.AbstractConfig):
+class Config(utils.BaseConfig):
     discount: float = .99
-    disclam: float = 1.
-    num_samples: int = 8
+    disclam: float = 0.
+    num_samples: int = 16
     action_repeat: int = 2
     expl_noise: float = 0.  # however SAC doesn't require it
     munchausen: float = 0.
@@ -27,7 +27,7 @@ class Config(utils.AbstractConfig):
     hidden_dim: int = 256
     obs_emb_dim: int = 64
     init_log_alpha: float = 1.
-    init_std: float = 3.
+    init_std: float = 2.
     mean_scale: float = 5.
     spr_coef: float = 2.
     spr_depth: int = 5
@@ -35,15 +35,21 @@ class Config(utils.AbstractConfig):
     critic_lr: float = 1e-3
     actor_lr: float = 1e-3
     dual_lr: float = 1e-2
-    critic_tau: float = .995
-    actor_tau: float = .995
-    encoder_tau: float = .995
+    encoder_lr: float = 1e-3
+    weight_decay: float = 1e-7
+
+    critic_tau: float = .99
+    actor_tau: float = .99
+    encoder_tau: float = .99
+    actor_update: int = 100
+    critic_update: int = 100
+    encoder_update: int = 100
 
     total_steps: int = 2 * 10 ** 6
-    training_steps: int = 300
+    training_steps: int = 100
     seq_len: int = 50
     eval_freq: int = 10000
-    max_grad: float = 100.
+    max_grad: float = 1000.
     batch_size: int = 50
     buffer_size: int = 1000
     burn_in: int = -1
@@ -52,7 +58,7 @@ class Config(utils.AbstractConfig):
 
     # PointNet
     pn_number: int = 600
-    pn_layers: tuple = (32, 32, 32, 32)
+    pn_layers: tuple = (32, 64, 128, 256)
     pn_dropout: float = 0.
 
     task: str = 'walker_stand'
@@ -110,9 +116,7 @@ class RLAlg:
         torch.save({
             'interactions': self.interactions_count,
             'agent': self.agent.state_dict(),
-            'actor_optim': self.agent.actor_optim.state_dict(),
-            'critic_optim': self.agent.critic_optim.state_dict(),
-            'dual_optim': self.agent.dual_optim.state_dict(),
+            'optim': self.agent.optim.state_dict(),
         }, self._task_path / 'checkpoint')
 
     def load(self, path):
@@ -122,9 +126,7 @@ class RLAlg:
             chkp = torch.load(path / 'checkpoint')
             with torch.no_grad():
                 self.agent.load_state_dict(chkp['agent'])
-                self.agent.actor_optim.load_state_dict(chkp['actor_optim'])
-                self.agent.critic_optim.load_state_dict(chkp['critic_optim'])
-                self.agent.dual_optim.load_state_dict(chkp['dual_optim'])
+                self.agent.optim.load_state_dict(chkp['optim'])
             self.interactions_count = chkp['interactions']
 
     def _make_env(self):

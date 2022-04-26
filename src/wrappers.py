@@ -162,7 +162,7 @@ class PointCloudWrapper(Wrapper):
     def __init__(self, env, pn_number=1000, render_kwargs=None, static_camera=True, as_pixels=False):
         super().__init__(env)
 
-        self.render_kwargs = render_kwargs or dict(camera_id=0)
+        self.render_kwargs = render_kwargs or dict(camera_id=0, height=240, width=320)
         self.scene_option = wrapper.MjvOption()
         self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0  # results in wrong segmentation for some envs
         self.pn_number = pn_number
@@ -174,32 +174,32 @@ class PointCloudWrapper(Wrapper):
 
     def observation(self, timestamp):
         depth_map = self.physics.render(depth=True, **self.render_kwargs, scene_option=self.scene_option)
-        inv_mat = self._inverse_matrix if self.static_camera else self.inverse_matrix()
-        point_cloud = self._get_point_cloud(inv_mat, depth_map)
+        point_cloud = self._get_point_cloud(depth_map)
         if self.as_pixels:
             # TODO: decide if segmentation or another mask is needed
             return point_cloud
         point_cloud = np.reshape(point_cloud, (-1, 3))
         segmentation_mask = self._segmentation_mask()
-        mask = self._mask(point_cloud)  # additional mask if needed
+        # TODO: fix orientation so mask can be used
+        #mask = self._mask(point_cloud)  # additional mask if needed
+        mask = True
         selected_points = point_cloud[segmentation_mask & mask]
         return self._to_fixed_number(selected_points).astype(np.float32)
 
     def inverse_matrix(self):
         # one could reuse the matrix if a camera remains static
-        camera = Camera(self.physics, **self.render_kwargs)
-        image, focal, _, _ = camera.matrices()
-        # inv_mat = np.linalg.inv((image@focal)[:, :-1])
-        # return inv_mat
-        cx = image[0, 2]
-        cy = image[1, 2]
-        f_inv = 1. / focal[1, 1]
+        cam_id, height, width = map(self.render_kwargs.get, ('camera_id', 'height', 'width'))
+        fov = self.physics.model.cam_fovy[cam_id]
+        rotation = self.physics.data.cam_xmat[cam_id].reshape(3, 3)
+        cx = (width - 1)/2.
+        cy = (height - 1)/2.
+        f_inv = 2.*np.tan(np.deg2rad(fov)/2.)/height
         inv_mat = np.array([
-            [-f_inv, f_inv ** 2, cy * f_inv ** 2 + cx * f_inv],
-            [0, f_inv, -f_inv * cy],
+            [f_inv, 0, -cx*f_inv],
+            [0, f_inv, -f_inv*cy],
             [0, 0, 1.]
         ])
-        return inv_mat
+        return rotation@inv_mat
 
     def _segmentation_mask(self):
         seg = self.physics.render(segmentation=True, **self.render_kwargs, scene_option=self.scene_option)
@@ -213,15 +213,18 @@ class PointCloudWrapper(Wrapper):
         else:
             return np.random.permutation(pc)[:self.pn_number]
 
-    def _get_point_cloud(self, mat, depth_map):
+    def _get_point_cloud(self, depth_map):
+        cam_id = self.render_kwargs['camera_id']
+        inv_mat = self._inverse_matrix if self.static_camera else self.inverse_matrix()
         dot_product = lambda x, y: np.einsum('ij, jhw->hwi', x, y)
+
         if not self.static_camera or self._partial_sum is None:
             width = self.render_kwargs.get('width', 320)
             height = self.render_kwargs.get('height', 240)
-            grid = np.mgrid[:height, :width]
-            self._partial_sum = dot_product(mat[:, :-1], grid)
+            grid = 1 + np.mgrid[:height, :width]
+            self._partial_sum = dot_product(inv_mat[:, :-1], grid) + self.physics.data.cam_xpos[cam_id]
 
-        residual_sum = dot_product(mat[:, -1:], depth_map[np.newaxis])
+        residual_sum = dot_product(inv_mat[:, -1:], depth_map[np.newaxis])
         return self._partial_sum + residual_sum
 
     def _mask(self, point_cloud):

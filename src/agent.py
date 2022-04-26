@@ -25,7 +25,7 @@ class RSAC(nn.Module):
     @torch.no_grad()
     def policy(self, obs, state, training):
         if not torch.is_tensor(state):
-            state = self.init_hidden(obs.size(0))
+            state = torch.zeros((obs.size(0), self._c.hidden_dim), device=self.device)
         obs, _ = self._target_encoder(obs)
         state = self._target_cell(obs, state)
         dist = self._target_actor(state)
@@ -49,48 +49,41 @@ class RSAC(nn.Module):
 
         rl_loss = self._policy_learning(states, actions, rewards, log_probs, target_states, alpha.detach())
         auxiliary_loss = self._auxiliary_loss(obs, actions, obs_emb, target_obs_emb)
-        critic_loss = rl_loss + auxiliary_loss
+        actor_loss, dual_loss = self._policy_improvement(target_states, alpha)
+        model_loss = rl_loss + auxiliary_loss + actor_loss + dual_loss
 
-        self.critic_optim.zero_grad()
-        critic_loss.backward()
-        clip_grad_norm_(self._critic_parameters, self._c.max_grad)
+        self.optim.zero_grad()
+        model_loss.backward()
+        clip_grad_norm_(self.parameters(), self._c.max_grad)
+        self.optim.step()
+        self.callback.add_scalar('train/actor_loss', actor_loss.item(), self._step)
         self.callback.add_scalar('train/auxiliary_loss', auxiliary_loss.item(), self._step)
         self.callback.add_scalar('train/critic_loss', rl_loss.item(), self._step)
-        # self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
-        # self.callback.add_scalar('train/encoder_grads', utils.grads_sum(self.encoder), self._step)
-        # self.callback.add_scalar('train/cell_grads', utils.grads_sum(self.cell), self._step)
-
-        actor_loss, dual_loss = self._policy_improvement(target_states, alpha)
-        self.actor_optim.zero_grad()
-        self.dual_optim.zero_grad()
-        actor_loss.backward()
-        dual_loss.backward()
-        clip_grad_norm_(self.actor.parameters(), self._c.max_grad)
-        self.callback.add_scalar('train/actor_loss', actor_loss.item(), self._step)
-        # self.callback.add_scalar('train/actor_grads', utils.grads_sum(self.actor), self._step)
-        self.critic_optim.step()
-        self.actor_optim.step()
-        self.dual_optim.step()
+        self.callback.add_scalar('train/actor_grads', utils.grads_sum(self.actor), self._step)
+        self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
+        self.callback.add_scalar('train/encoder_grads', utils.grads_sum(self.encoder), self._step)
+        self.callback.add_scalar('train/cell_grads', utils.grads_sum(self.cell), self._step)
         self.update_targets()
         self._step += 1
 
     def _policy_learning(self, states, actions, rewards, behaviour_log_probs, target_states, alpha):
-        states, actions, rewards, behaviour_log_probs, target_states, next_states = \
+        states, actions, rewards, behaviour_log_probs, target_states, next_target_states = \
             map(lambda t: t[:-1],
                 (states, actions, rewards, behaviour_log_probs, target_states, target_states.roll(-1, 0)))
 
-        with torch.no_grad():  # none of ops require grads but still
-            target_dist = self._target_actor(next_states)
+        with torch.no_grad():
+            target_dist = self._target_actor(target_states)
             sampled_actions = target_dist.sample([self._c.num_samples])
-            next_log_probs = target_dist.log_prob(sampled_actions).unsqueeze(-1)
-            next_values = self._target_critic(next_states[None].expand(self._c.num_samples, *states.shape),
-                                              sampled_actions).min(-1, keepdim=True).values
-            next_values = torch.mean(next_values - alpha * next_log_probs, 0)
-            target_values = utils.gve(rewards, next_values, self._c.discount, 1. - self._c.disclam)
+            log_probs = target_dist.log_prob(sampled_actions).unsqueeze(-1)
+            values = self._target_critic(torch.repeat_interleave(target_states[None], self._c.num_samples, 0),
+                                         sampled_actions).min(-1, keepdim=True).values
+            soft_values = torch.mean(values - alpha*log_probs, 0)
+            target_values = rewards + self._c.discount*self._target_value(next_target_states)
 
+        values = self.value(states)
         q_values = self.critic(states, actions)
 
-        loss = (q_values - target_values).pow(2)
+        loss = (q_values - target_values).pow(2) + (values - soft_values).pow(2)
         loss = self._masked_discount(loss, self._c.burn_in)*loss
 
         self.callback.add_scalar('train/mean_reward', rewards.mean().item(), self._step)
@@ -101,7 +94,8 @@ class RSAC(nn.Module):
         dist = self.actor(states)
         actions = dist.rsample([self._c.num_samples])
         log_prob = dist.log_prob(actions)
-        q_values = self._target_critic(states[None].expand(self._c.num_samples, *states.shape), actions).min(-1).values
+        q_values = self._target_critic(torch.repeat_interleave(states[None], self._c.num_samples, 0),
+                                       actions).min(-1).values
 
         with torch.no_grad():
             ent = -log_prob.mean()
@@ -109,7 +103,7 @@ class RSAC(nn.Module):
             self.callback.add_scalar('train/alpha', alpha.item(), self._step)
 
         actor_loss = torch.mean(alpha.detach() * log_prob - q_values, 0)
-        actor_loss = self._masked_discount(actor_loss) * actor_loss
+        actor_loss = self._masked_discount(actor_loss, self._c.burn_in) * actor_loss
         dual_loss = - alpha * (log_prob.detach() + self._target_entropy)
         return actor_loss.mean(), dual_loss.mean()
 
@@ -125,6 +119,7 @@ class RSAC(nn.Module):
                 loss = (obs_pred - obs).pow(2).mean()
             return loss
         elif self._c.aux_loss == 'contrastive':
+
             actions = actions[:-1].unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
             obs_emb = obs_emb[:-self._c.spr_depth].flatten(0, 1)
 
@@ -161,21 +156,25 @@ class RSAC(nn.Module):
         return mask
 
     def _build(self):
+        # TODO: weight decay, value-function, make contrastive dimensions larger
         emb = self._c.obs_emb_dim
+        hidden = self._c.hidden_dim
         self.device = torch.device(self._c.device if torch.cuda.is_available() else 'cpu')
         # RL
-        self.cell = nn.GRUCell(emb, self._c.hidden_dim)
-        self.actor = models.Actor(self._c.hidden_dim, self.act_dim, layers=self._c.actor_layers,
+        self.cell = nn.GRUCell(emb, hidden)
+        self.actor = models.Actor(hidden, self.act_dim, layers=self._c.actor_layers,
                                   mean_scale=self._c.mean_scale, init_std=self._c.init_std)
 
-        self.critic = models.Critic(self._c.hidden_dim + self.act_dim, self._c.critic_layers)
+        self.value = utils.build_mlp((hidden, *self._c.critic_layers, 1))
+        self.critic = models.Critic(hidden + self.act_dim, self._c.critic_layers)
 
         # SPR
-        self.dm = nn.GRUCell(self.act_dim, emb)
+        self.dm = nn.GRUCell(self.act_dim, hidden)
         self.projection = nn.Sequential(
-            nn.Linear(emb, emb),
+            nn.Linear(hidden, emb),
             nn.ELU(),
             nn.Linear(emb, emb),
+            nn.ELU(),
         )
         self.prediction = nn.Linear(emb, emb)
         self.cos_sim = nn.CosineSimilarity(dim=-1)
@@ -183,39 +182,35 @@ class RSAC(nn.Module):
         obs_dim = self.obs_spec.shape[0]
         if self._c.observe == 'states':
             self.encoder = models.DummyEncoder(obs_dim, emb)
-            self.decoder = nn.Linear(emb, obs_dim)
+            self.decoder = nn.Linear(hidden, obs_dim)
         elif self._c.observe in wrappers.PixelsWrapper.channels.keys():
             self.encoder = models.PixelEncoder(obs_dim, emb)
-            self.decoder = models.PixelDecoder(emb, obs_dim)
+            self.decoder = models.PixelDecoder(hidden, obs_dim)
         elif self._c.observe == 'point_cloud':
             # self.encoder = models.PointCloudEncoder(3, emb, layers=self._c.pn_layers,
             #                                         dropout=self._c.pn_dropout)
             self.encoder = models.PointCloudEncoderGlobal(3, emb, sizes=self._c.pn_layers,
                                                           dropout=self._c.pn_dropout, features_from_layers=())
-            self.decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers, pn_number=self._c.pn_number)
+            self.decoder = models.PointCloudDecoder(hidden, layers=self._c.pn_layers, pn_number=self._c.pn_number)
 
         self._log_alpha = nn.Parameter(torch.tensor(self._c.init_log_alpha).float())
-        self._target_encoder, self._target_actor, self._target_critic, self._target_cell, self._target_projection \
-            = map(lambda m: deepcopy(m).requires_grad_(False),
-                  (self.encoder, self.actor, self.critic, self.cell, self.projection))
 
-        self._critic_parameters = nn.ParameterList(
-            chain(*map(nn.Module.parameters,
-                       [
-                           self.encoder,
-                           self.cell,
-                           self.dm,
-                           self.projection,
-                           self.prediction,
-                           self.decoder,
-                           self.critic
-                       ]
-                       )
-                  )
-        )
-        self.critic_optim = torch.optim.Adam(self._critic_parameters, self._c.critic_lr)
-        self.actor_optim = torch.optim.Adam(self.actor.parameters(), self._c.actor_lr)
-        self.dual_optim = torch.optim.Adam([self._log_alpha], self._c.dual_lr)
+        self._target_encoder, self._target_actor, self._target_value,\
+            self._target_critic, self._target_cell, self._target_projection =\
+            map(lambda m: deepcopy(m).requires_grad_(False),
+                (self.encoder, self.actor, self.value, self.critic, self.cell, self.projection))
+
+        def param_group(*modules):
+            return nn.ParameterList(chain(*map(nn.Module.parameters, modules)))
+        self._rl_params = param_group(self.cell, self.critic, self.value)
+        self._ae_params = param_group(self.encoder, self.dm, self.projection, self.prediction, self.decoder)
+
+        self.optim = torch.optim.Adam([
+            {'params': self.actor.parameters(), 'lr': self._c.actor_lr},
+            {'params': self._rl_params, 'lr': self._c.critic_lr},
+            {'params': self._ae_params, 'lr': self._c.encoder_lr, 'weight_decay': self._c.weight_decay},
+            {'params': [self._log_alpha], 'lr': self._c.dual_lr}
+        ])
         self._target_entropy = -self.act_dim
         self.to(self.device)
 
@@ -226,6 +221,12 @@ class RSAC(nn.Module):
         utils.soft_update(self._target_cell, self.cell, self._c.critic_tau)
         utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
         utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)
+        # def predicate(t):
+        #     return self._step % t == 0
+        # utils.hard_update(self._target_encoder, self.encoder, predicate(self._c.encoder_update))
+        # utils.hard_update(self._target_projection, self.projection, predicate(self._c.encoder_update))
+        # utils.hard_update(self._target_actor, self.actor, predicate(self._c.actor_update))
+        # utils.hard_update(self._target_value, self.value, predicate(self._c.critic_update))
+        # utils.hard_update(self._target_cell, self.cell, predicate(self._c.critic_update))
+        # utils.hard_update(self._target_critic, self.critic, predicate(self._c.critic_update))
 
-    def init_hidden(self, batch_size=1):
-        return torch.zeros((batch_size, self._c.hidden_dim), device=self.device)
