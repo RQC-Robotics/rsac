@@ -19,8 +19,6 @@ class Config(utils.BaseConfig):
     disclam: float = 0.
     num_samples: int = 16
     action_repeat: int = 2
-    expl_noise: float = 0.  # however SAC doesn't require it
-    munchausen: float = 0.
 
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
@@ -58,7 +56,7 @@ class Config(utils.BaseConfig):
 
     # PointNet
     pn_number: int = 600
-    pn_layers: tuple = (32, 64, 128, 256)
+    pn_layers: tuple = (32, 64, 128)
     pn_dropout: float = 0.
 
     task: str = 'walker_stand'

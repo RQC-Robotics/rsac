@@ -1,5 +1,4 @@
 import torch
-import pdb
 from . import models, utils, wrappers
 from copy import deepcopy
 from torch.nn.utils import clip_grad_norm_
@@ -31,7 +30,6 @@ class RSAC(nn.Module):
         dist = self._target_actor(state)
         if training:
             action = dist.sample()
-            action = action + self._c.expl_noise*torch.randn_like(action)
         else:
             action = dist.sample([100]).mean(0)
         action = torch.clamp(action, -utils.ACT_LIM, utils.ACT_LIM)
@@ -48,7 +46,7 @@ class RSAC(nn.Module):
         alpha = F.softplus(alpha) + 1e-8
 
         rl_loss = self._policy_learning(states, actions, rewards, log_probs, target_states, alpha.detach())
-        auxiliary_loss = self._auxiliary_loss(obs, actions, obs_emb, target_obs_emb)
+        auxiliary_loss = self._auxiliary_loss(obs, actions, states, target_states)
         actor_loss, dual_loss = self._policy_improvement(target_states, alpha)
         model_loss = rl_loss + auxiliary_loss + actor_loss + dual_loss
 
@@ -67,27 +65,28 @@ class RSAC(nn.Module):
         self._step += 1
 
     def _policy_learning(self, states, actions, rewards, behaviour_log_probs, target_states, alpha):
-        states, actions, rewards, behaviour_log_probs, target_states, next_target_states = \
-            map(lambda t: t[:-1],
-                (states, actions, rewards, behaviour_log_probs, target_states, target_states.roll(-1, 0)))
-
         with torch.no_grad():
             target_dist = self._target_actor(target_states)
             sampled_actions = target_dist.sample([self._c.num_samples])
-            log_probs = target_dist.log_prob(sampled_actions).unsqueeze(-1)
+            sampled_log_probs = target_dist.log_prob(sampled_actions).unsqueeze(-1)
             values = self._target_critic(torch.repeat_interleave(target_states[None], self._c.num_samples, 0),
                                          sampled_actions).min(-1, keepdim=True).values
-            soft_values = torch.mean(values - alpha*log_probs, 0)
-            target_values = rewards + self._c.discount*self._target_value(next_target_states)
+            soft_values = torch.mean(values - alpha*sampled_log_probs, 0)
+            target_values = self._target_critic(target_states, actions).min(-1, keepdim=True).values
+            log_probs = target_dist.log_prob(actions).unsqueeze(-1)
+            cs = torch.minimum(torch.ones_like(log_probs[0]), (log_probs - behaviour_log_probs).exp())
+            deltas = rewards + self._c.discount*soft_values.roll(-1, 0) - target_values
+            target_values, deltas, cs = map(lambda t: t[:-1], (target_values, deltas, cs))
+            target_values = utils.retrace(target_values, deltas, cs, self._c.discount, 1.)
 
-        values = self.value(states)
         q_values = self.critic(states, actions)
 
-        loss = (q_values - target_values).pow(2) + (values - soft_values).pow(2)
-        loss = self._masked_discount(loss, self._c.burn_in)*loss
+        loss = (q_values[:-1] - target_values).pow(2)
 
         self.callback.add_scalar('train/mean_reward', rewards.mean().item(), self._step)
         self.callback.add_scalar('train/mean_value', q_values.mean().item(), self._step)
+        self.callback.add_scalar('train/retrace_weight', cs.mean(), self._step)
+        self.callback.add_scalar('train/mean_deltas', deltas.mean(), self._step)
         return loss.mean()
 
     def _policy_improvement(self, states, alpha):
@@ -107,30 +106,30 @@ class RSAC(nn.Module):
         dual_loss = - alpha * (log_prob.detach() + self._target_entropy)
         return actor_loss.mean(), dual_loss.mean()
 
-    def _auxiliary_loss(self, obs, actions, obs_emb, target_obs_emb):
+    def _auxiliary_loss(self, obs, actions, states_emb, target_states_emb):
         # todo check l2 reg
         if self._c.aux_loss == 'None':
             return torch.tensor(0.)
         elif self._c.aux_loss == 'reconstruction':
-            obs_pred = self.decoder(obs_emb)
+            obs_pred = self.decoder(states_emb)
             if self._c.observe == 'point_cloud':
                 loss = chamfer_distance(obs.flatten(0, 1), obs_pred.flatten(0, 1))[0]
             else:
-                loss = (obs_pred - obs).pow(2).mean()
-            return loss
+                loss = (obs_pred - obs).pow(2)
+            return loss.mean()
         elif self._c.aux_loss == 'contrastive':
-
+            #import pdb; pdb.set_trace()
             actions = actions[:-1].unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
-            obs_emb = obs_emb[:-self._c.spr_depth].flatten(0, 1)
+            states_emb = states_emb[:-self._c.spr_depth].flatten(0, 1)
 
-            pred_embeds = self.cell_roll(self.dm, actions, obs_emb)
+            pred_embeds = self.cell_roll(self.dm, actions, states_emb)
             pred_embeds = self.projection(pred_embeds)
             pred_embeds = self.prediction(pred_embeds)
 
-            target_obs_emb = self._target_projection(target_obs_emb[1:])
-            target_obs_emb = target_obs_emb.unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
+            target_states_emb = self._target_projection(target_states_emb[1:])
+            target_states_emb = target_states_emb.unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
 
-            contrastive_loss = - self.cos_sim(pred_embeds, target_obs_emb)
+            contrastive_loss = - self.cos_sim(pred_embeds, target_states_emb)
             return self._c.spr_coef*contrastive_loss.mean()
 
         else:
@@ -170,13 +169,8 @@ class RSAC(nn.Module):
 
         # SPR
         self.dm = nn.GRUCell(self.act_dim, hidden)
-        self.projection = nn.Sequential(
-            nn.Linear(hidden, emb),
-            nn.ELU(),
-            nn.Linear(emb, emb),
-            nn.ELU(),
-        )
-        self.prediction = nn.Linear(emb, emb)
+        self.projection = utils.build_mlp((hidden, emb, emb))
+        self.prediction = utils.build_mlp((emb, emb, emb))
         self.cos_sim = nn.CosineSimilarity(dim=-1)
 
         obs_dim = self.obs_spec.shape[0]
@@ -193,7 +187,7 @@ class RSAC(nn.Module):
                                                           dropout=self._c.pn_dropout, features_from_layers=())
             self.decoder = models.PointCloudDecoder(hidden, layers=self._c.pn_layers, pn_number=self._c.pn_number)
 
-        self._log_alpha = nn.Parameter(torch.tensor(self._c.init_log_alpha).float())
+        self._log_alpha = nn.Parameter(torch.tensor(self._c.init_log_alpha))
 
         self._target_encoder, self._target_actor, self._target_value,\
             self._target_critic, self._target_cell, self._target_projection =\
