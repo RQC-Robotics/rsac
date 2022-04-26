@@ -3,7 +3,7 @@ import numpy as np
 from collections import deque
 import random
 from torch.utils.data import Dataset
-from dm_control import suite
+from dm_control import suite, manipulation
 import math
 import dataclasses
 from abc import abstractmethod, ABC
@@ -31,9 +31,10 @@ def grads_sum(model):
 
 
 def make_env(name, **kwargs):
+    if name in manipulation.ALL:
+        return manipulation.load(name)
     domain, task = name.split('_', 1)
     if domain == 'ball':
-        # the only task with double underline
         domain = 'ball_in_cup'
         task = 'catch'
     return suite.load(domain, task, **kwargs)

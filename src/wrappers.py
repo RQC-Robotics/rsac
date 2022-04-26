@@ -143,7 +143,7 @@ class PixelsWrapper(Wrapper):
         if 'd' in self.mode:
             depth = self.physics.render(depth=True, **self.render_kwargs)
             obs += (depth[..., np.newaxis],)
-        if 'g' in self.mode:
+        if 'rgb' not in self.mode and 'g' in self.mode:
             g = rgb @ self._gs_coef
             obs += (g[..., np.newaxis],)
         obs = np.concatenate(obs, -1)

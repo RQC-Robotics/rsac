@@ -57,10 +57,10 @@ class RSAC(nn.Module):
         self.callback.add_scalar('train/actor_loss', actor_loss.item(), self._step)
         self.callback.add_scalar('train/auxiliary_loss', auxiliary_loss.item(), self._step)
         self.callback.add_scalar('train/critic_loss', rl_loss.item(), self._step)
-        self.callback.add_scalar('train/actor_grads', utils.grads_sum(self.actor), self._step)
-        self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
-        self.callback.add_scalar('train/encoder_grads', utils.grads_sum(self.encoder), self._step)
-        self.callback.add_scalar('train/cell_grads', utils.grads_sum(self.cell), self._step)
+        # self.callback.add_scalar('train/actor_grads', utils.grads_sum(self.actor), self._step)
+        # self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
+        # self.callback.add_scalar('train/encoder_grads', utils.grads_sum(self.encoder), self._step)
+        # self.callback.add_scalar('train/cell_grads', utils.grads_sum(self.cell), self._step)
         self.update_targets()
         self._step += 1
 
@@ -77,7 +77,7 @@ class RSAC(nn.Module):
             cs = torch.minimum(torch.ones_like(log_probs[0]), (log_probs - behaviour_log_probs).exp())
             deltas = rewards + self._c.discount*soft_values.roll(-1, 0) - target_values
             target_values, deltas, cs = map(lambda t: t[:-1], (target_values, deltas, cs))
-            target_values = utils.retrace(target_values, deltas, cs, self._c.discount, 1.)
+            target_values = utils.retrace(target_values, deltas, cs, self._c.discount, self._c.disclam)
 
         q_values = self.critic(states, actions)
 
@@ -85,8 +85,8 @@ class RSAC(nn.Module):
 
         self.callback.add_scalar('train/mean_reward', rewards.mean().item(), self._step)
         self.callback.add_scalar('train/mean_value', q_values.mean().item(), self._step)
-        self.callback.add_scalar('train/retrace_weight', cs.mean(), self._step)
-        self.callback.add_scalar('train/mean_deltas', deltas.mean(), self._step)
+        # self.callback.add_scalar('train/retrace_weight', cs.mean(), self._step)
+        # self.callback.add_scalar('train/mean_deltas', deltas.mean(), self._step)
         return loss.mean()
 
     def _policy_improvement(self, states, alpha):
@@ -210,17 +210,17 @@ class RSAC(nn.Module):
 
     @torch.no_grad()
     def update_targets(self):
-        utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
-        utils.soft_update(self._target_projection, self.projection, self._c.encoder_tau)
-        utils.soft_update(self._target_cell, self.cell, self._c.critic_tau)
-        utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
-        utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)
-        # def predicate(t):
-        #     return self._step % t == 0
-        # utils.hard_update(self._target_encoder, self.encoder, predicate(self._c.encoder_update))
-        # utils.hard_update(self._target_projection, self.projection, predicate(self._c.encoder_update))
-        # utils.hard_update(self._target_actor, self.actor, predicate(self._c.actor_update))
-        # utils.hard_update(self._target_value, self.value, predicate(self._c.critic_update))
-        # utils.hard_update(self._target_cell, self.cell, predicate(self._c.critic_update))
-        # utils.hard_update(self._target_critic, self.critic, predicate(self._c.critic_update))
+        # utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
+        # utils.soft_update(self._target_projection, self.projection, self._c.encoder_tau)
+        # utils.soft_update(self._target_cell, self.cell, self._c.critic_tau)
+        # utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
+        # utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)
+        def predicate(t):
+            return self._step % t == 0
+        utils.hard_update(self._target_encoder, self.encoder, predicate(self._c.encoder_update))
+        utils.hard_update(self._target_projection, self.projection, predicate(self._c.encoder_update))
+        utils.hard_update(self._target_actor, self.actor, predicate(self._c.actor_update))
+        utils.hard_update(self._target_value, self.value, predicate(self._c.critic_update))
+        utils.hard_update(self._target_cell, self.cell, predicate(self._c.critic_update))
+        utils.hard_update(self._target_critic, self.critic, predicate(self._c.critic_update))
 

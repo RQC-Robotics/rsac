@@ -16,13 +16,13 @@ torch.autograd.set_detect_anomaly(True)
 @dataclass
 class Config(utils.BaseConfig):
     discount: float = .99
-    disclam: float = 0.
+    disclam: float = 1.
     num_samples: int = 16
     action_repeat: int = 2
 
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
-    hidden_dim: int = 256
+    hidden_dim: int = 512
     obs_emb_dim: int = 64
     init_log_alpha: float = 1.
     init_std: float = 2.
@@ -36,18 +36,18 @@ class Config(utils.BaseConfig):
     encoder_lr: float = 1e-3
     weight_decay: float = 1e-7
 
-    critic_tau: float = .99
-    actor_tau: float = .99
-    encoder_tau: float = .99
-    actor_update: int = 100
-    critic_update: int = 100
-    encoder_update: int = 100
+    critic_tau: float = .995
+    actor_tau: float = .995
+    encoder_tau: float = .995
+    actor_update: int = 500
+    critic_update: int = 500
+    encoder_update: int = 500
 
     total_steps: int = 2 * 10 ** 6
     training_steps: int = 100
     seq_len: int = 50
     eval_freq: int = 10000
-    max_grad: float = 1000.
+    max_grad: float = 100.
     batch_size: int = 50
     buffer_size: int = 1000
     burn_in: int = -1
