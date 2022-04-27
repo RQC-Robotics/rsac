@@ -104,12 +104,6 @@ def soft_update(target, online, rho):
         pt.copy_(rho * pt + (1. - rho) * po)
 
 
-def hard_update(target, online, predicate):
-    if predicate:
-        for pt, po in zip(target.parameters(), online.parameters()):
-            pt.copy_(po)
-
-
 def gve(rewards, next_values, discount, disclam):
     target_values = []
     last_val = next_values[-1]
