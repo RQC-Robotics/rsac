@@ -31,7 +31,8 @@ class RSAC(nn.Module):
         if training:
             action = dist.sample()
         else:
-            action = dist.sample([100]).mean(0)
+            # mode can be used instead
+            action = dist.sample([1000]).mean(0)
         action = torch.clamp(action, -utils.ACT_LIM, utils.ACT_LIM)
         log_prob = dist.log_prob(action)
         return action, log_prob, state
@@ -210,17 +211,17 @@ class RSAC(nn.Module):
 
     @torch.no_grad()
     def update_targets(self):
-        # utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
-        # utils.soft_update(self._target_projection, self.projection, self._c.encoder_tau)
-        # utils.soft_update(self._target_cell, self.cell, self._c.critic_tau)
-        # utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
-        # utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)
-        def predicate(t):
-            return self._step % t == 0
-        utils.hard_update(self._target_encoder, self.encoder, predicate(self._c.encoder_update))
-        utils.hard_update(self._target_projection, self.projection, predicate(self._c.encoder_update))
-        utils.hard_update(self._target_actor, self.actor, predicate(self._c.actor_update))
-        utils.hard_update(self._target_value, self.value, predicate(self._c.critic_update))
-        utils.hard_update(self._target_cell, self.cell, predicate(self._c.critic_update))
-        utils.hard_update(self._target_critic, self.critic, predicate(self._c.critic_update))
+        utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
+        utils.soft_update(self._target_projection, self.projection, self._c.encoder_tau)
+        utils.soft_update(self._target_cell, self.cell, self._c.critic_tau)
+        utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
+        utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)
+        # def predicate(t):
+        #     return self._step % t == 0
+        # utils.hard_update(self._target_encoder, self.encoder, predicate(self._c.encoder_update))
+        # utils.hard_update(self._target_projection, self.projection, predicate(self._c.encoder_update))
+        # utils.hard_update(self._target_actor, self.actor, predicate(self._c.actor_update))
+        # utils.hard_update(self._target_value, self.value, predicate(self._c.critic_update))
+        # utils.hard_update(self._target_cell, self.cell, predicate(self._c.critic_update))
+        # utils.hard_update(self._target_critic, self.critic, predicate(self._c.critic_update))
 

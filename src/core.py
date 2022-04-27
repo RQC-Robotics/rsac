@@ -44,9 +44,9 @@ class Config(utils.BaseConfig):
     encoder_update: int = 500
 
     total_steps: int = 2 * 10 ** 6
-    training_steps: int = 100
+    training_steps: int = 200
     seq_len: int = 50
-    eval_freq: int = 10000
+    eval_freq: int = 20000
     max_grad: float = 100.
     batch_size: int = 50
     buffer_size: int = 1000
