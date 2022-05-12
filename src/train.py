@@ -17,7 +17,7 @@ def parse_args():
     # parser.add_argument('--logdir', type=str, default='logdir')
     # parser.add_argument('--device', type=str, default='cuda')
     for field in dataclasses.fields(Config):
-        parser.add_argument(f'--{field.name}', type=field.type, default=field.default)
+        parser.add_argument(f'--{field.name}', type=field.type, default=field.default, help=str(field.type))
     return parser.parse_args()
 
 
@@ -27,15 +27,19 @@ def make_config(args):
     return dataclasses.replace(config, **fields)
 
 
-if __name__ == "__main__":
+def train():
     args = parse_args()
     config = make_config(args)
-    
+
     if args.load:
         config = config.load(args.load / 'config.yml')
-    
+
     alg = RLAlg(config)
-    
+
     if args.load:
         alg.load(args.load)
     alg.learn()
+
+
+if __name__ == "__main__":
+    train()

@@ -38,7 +38,7 @@ class RSAC(nn.Module):
     def step(self, obs, actions, rewards, log_probs, hidden_states):
         obs_emb, _ = self.encoder(obs)
         target_obs_emb, _ = self._target_encoder(obs)
-        states = self.cell_roll(self.cell, obs_emb, hidden_states[0], burn_in=self._c.burn_in)
+        states = self.cell_roll(self.cell, obs_emb, hidden_states[0], burn_in=self._c.burn_in, bptt=self._c.bptt)
         target_states = self.cell_roll(self._target_cell, target_obs_emb, hidden_states[0])
 
         alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -20.))
@@ -146,11 +146,11 @@ class RSAC(nn.Module):
             raise NotImplementedError
 
     @staticmethod
-    def cell_roll(cell, inp, state, burn_in=-1):
+    def cell_roll(cell, inp, state, burn_in=-1, bptt=-1):
         states = []
         for i, x in enumerate(inp):
             state = cell(x, state)
-            if i < burn_in:
+            if i < burn_in or (bptt > 0 and i % bptt == 0):
                 state = state.detach()
             states.append(state)
         return torch.stack(states)

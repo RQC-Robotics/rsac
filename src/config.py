@@ -48,8 +48,8 @@ class Config(BaseConfig):
     pn_dropout: float = 0.
 
     # train
-    rl_lr: float = 3e-4
-    ae_lr: float = 3e-4
+    rl_lr: float = 1e-3
+    ae_lr: float = 1e-3
     dual_lr: float = 1e-2
     weight_decay: float = 1e-7
     critic_tau: float = .99
@@ -63,7 +63,8 @@ class Config(BaseConfig):
     batch_size: int = 50
     eval_freq: int = 20000
     buffer_size: int = 1000
-    burn_in: int = 5
+    burn_in: int = 10
+    bptt: int = -1
 
     # task
     task: str = 'walker_stand'
