@@ -11,11 +11,10 @@ dependencies:
   - numpy
   - pip
   - pytorch=1.11.0
-  - torchvision
   - cudatoolkit=11.3
+  - torchvision
   - fvcore
   - iopath
-  - torchvision
   - pytorch3d
   - matplotlib
   - tensorboard

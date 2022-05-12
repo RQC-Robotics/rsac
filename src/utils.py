@@ -1,20 +1,17 @@
+import copy
 import torch
-import numpy as np
-from collections import deque
 import random
+import numpy as np
+from itertools import chain
+from collections import deque
 from torch.utils.data import Dataset
 from dm_control import suite, manipulation
-import math
-import dataclasses
-from abc import abstractmethod, ABC
-from ruamel.yaml import YAML
 nn = torch.nn
 F = nn.functional
 td = torch.distributions
-ACT_LIM = .9997
 
 
-def build_mlp(sizes, act=nn.ELU):
+def build_mlp(*sizes, act=nn.ELU):
     mlp = []
     for i in range(1, len(sizes)):
         mlp.append(nn.Linear(sizes[i-1], sizes[i]))
@@ -26,8 +23,8 @@ def grads_sum(model):
     s = 0
     for p in model.parameters():
         if p.grad is not None:
-            s += p.grad.sum().item()
-    return s
+            s += p.grad.pow(2).sum().item()
+    return np.sqrt(s)
 
 
 def make_env(name, **kwargs):
@@ -44,18 +41,20 @@ def simulate(env, policy, training):
     # done flags might be useful for another learning alg
     obs = env.reset()
     done = False
-    prev_state = None
-    observations, actions, rewards, log_probs, states = [], [], [], [], []  # states=recurrent hidden
+    state = None
+    observations, actions, rewards, dones, log_probs, states = [[] for _ in range(6)]  # states=recurrent hidden
+    detach = lambda t: t.detach().cpu().flatten().numpy()
     while not done:
-        if torch.is_tensor(prev_state):
-            states.append(prev_state.detach().cpu().flatten().numpy())
-            action, log_prob, prev_state = policy(obs, prev_state, training)
+        if torch.is_tensor(state):
+            states.append(detach(state))
+            action, log_prob, state = policy(obs, state, training)
         else:
-            action, log_prob, prev_state = policy(obs, prev_state, training)
-            states.append(torch.zeros_like(prev_state).detach().cpu().flatten().numpy())
+            action, log_prob, state = policy(obs, state, training)
+            states.append(detach(torch.zeros_like(state)))
         new_obs, reward, done = env.step(action)
         observations.append(obs)
         actions.append(action)
+        dones.append([done])
         rewards.append([reward])
         log_probs.append(log_prob)
         obs = new_obs
@@ -64,6 +63,7 @@ def simulate(env, policy, training):
         observations=observations,
         actions=actions,
         rewards=rewards,
+        done_flags=dones,
         states=states,
         log_probs=log_probs,
     )
@@ -92,7 +92,7 @@ class TrajectoryBuffer(Dataset):
 
 
 class TanhTransform(td.transforms.TanhTransform):
-    lim = ACT_LIM
+    lim = .99999997
     
     def _inverse(self, y):
         y = torch.clamp(y, min=-self.lim, max=self.lim)
@@ -104,17 +104,8 @@ def soft_update(target, online, rho):
         pt.copy_(rho * pt + (1. - rho) * po)
 
 
-def gve(rewards, next_values, discount, disclam):
-    target_values = []
-    last_val = next_values[-1]
-    for r, v in zip(rewards.flip(0), next_values.flip(0)):
-        last_val = r + discount*(disclam*last_val + (1.-disclam)*v)
-        target_values.append(last_val)
-    return torch.stack(target_values).flip(0)
-
-
-def retrace(values, resids, cs, discount, disclam):
-    cs = torch.cat((cs[1:], torch.ones_like(cs[0])[None]))
+def retrace(resids, cs, discount, disclam):
+    cs = torch.cat((cs[1:], torch.ones_like(cs[-1:])))
     cs *= disclam
     resids, cs = map(lambda t: t.flip(0), (resids, cs))
     deltas = []
@@ -122,24 +113,12 @@ def retrace(values, resids, cs, discount, disclam):
     for r, c in zip(resids, cs):
         last_val = r + last_val * discount * c
         deltas.append(last_val)
-    return values + torch.stack(deltas).flip(0)
+    return torch.stack(deltas).flip(0)
 
 
-@dataclasses.dataclass
-class BaseConfig(ABC):
-    def save(self, file_path):
-        yaml = YAML()
-        with open(file_path, 'w') as f:
-            yaml.dump(dataclasses.asdict(self), f)
+def make_param_group(*modules):
+    return nn.ParameterList(chain(*map(nn.Module.parameters, modules)))
 
-    def load(self, file_path):
-        yaml = YAML()
-        with open(file_path) as f:
-            config_dict = yaml.load(f)
-        return dataclasses.replace(self, **config_dict)
 
-    def __post_init__(self):
-        for field in dataclasses.fields(self):
-            value = getattr(self, field.name)
-            value = field.type(value)
-            setattr(self, field.name, value)
+def make_targets(*modules):
+    return map(lambda m: copy.deepcopy(m).requires_grad_(False), modules)

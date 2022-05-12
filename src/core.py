@@ -1,4 +1,3 @@
-from dataclasses import dataclass, field
 from .agent import RSAC
 from . import wrappers, utils
 import torch
@@ -8,59 +7,8 @@ import pathlib
 import datetime
 from collections import deque
 import numpy as np
-import pdb
-
+import pickle
 torch.autograd.set_detect_anomaly(True)
-
-
-@dataclass
-class Config(utils.BaseConfig):
-    discount: float = .99
-    disclam: float = 1.
-    num_samples: int = 16
-    action_repeat: int = 2
-
-    critic_layers: tuple = (256, 256)
-    actor_layers: tuple = (256, 256)
-    hidden_dim: int = 256
-    obs_emb_dim: int = 64
-    init_log_alpha: float = 1.
-    init_std: float = 2.
-    mean_scale: float = 5.
-    spr_coef: float = 2.
-    spr_depth: int = 5
-
-    critic_lr: float = 1e-3
-    actor_lr: float = 1e-3
-    dual_lr: float = 1e-2
-    encoder_lr: float = 1e-3
-    weight_decay: float = 1e-7
-
-    critic_tau: float = .995
-    actor_tau: float = .995
-    encoder_tau: float = .995
-
-    total_steps: int = 2 * 10 ** 6
-    training_steps: int = 200
-    seq_len: int = 50
-    eval_freq: int = 20000
-    max_grad: float = 100.
-    batch_size: int = 50
-    buffer_size: int = 1000
-    burn_in: int = -1
-    bptt: int = -1
-
-
-    # PointNet
-    pn_number: int = 600
-    pn_layers: tuple = (32, 64, 128)
-    pn_dropout: float = 0.
-
-    task: str = 'walker_stand'
-    aux_loss: str = 'None'
-    logdir: str = 'logdir'
-    device: str = 'cuda'
-    observe: str = 'point_cloud'
 
 
 class RLAlg:
@@ -110,19 +58,25 @@ class RLAlg:
     def save(self):
         torch.save({
             'interactions': self.interactions_count,
-            'agent': self.agent.state_dict(),
+            'params': self.agent.state_dict(),
             'optim': self.agent.optim.state_dict(),
         }, self._task_path / 'checkpoint')
+        with open(self._task_path / 'buffer', 'wb') as b:
+            pickle.dump(self.buffer, b)
 
     def load(self, path):
         path = pathlib.Path(path)
-        self.config = self.config.load(path / 'config.yml')
+        [f.unlink() for f in path.iterdir() if f.match('*tfevents*')]
+        self.config = self.config.load(path / 'config.yml', **kwargs)
         if (path / 'checkpoint').exists():
             chkp = torch.load(path / 'checkpoint')
             with torch.no_grad():
-                self.agent.load_state_dict(chkp['agent'])
+                self.agent.load_state_dict(chkp['params'])
                 self.agent.optim.load_state_dict(chkp['optim'])
             self.interactions_count = chkp['interactions']
+            
+        with open(self._task_path / 'buffer', 'rb') as b:
+            self.buffer = pickle.load(b)
 
     def _make_env(self):
         env = utils.make_env(self.config.task)

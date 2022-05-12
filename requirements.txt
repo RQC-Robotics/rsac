@@ -1,8 +1,8 @@
 numpy
-pytorch
-torchvision
-pytorch3d
 matplotlib
+torchvision
 tensorboard
 dm_control
 ruamel.yaml
+fvcore
+iopath

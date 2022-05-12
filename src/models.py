@@ -9,7 +9,7 @@ td = torch.distributions
 class Critic(nn.Module):
     def __init__(self, in_features, layers):
         super().__init__()
-        self.qs = nn.ModuleList([build_mlp((in_features, *layers, 1)) for _ in range(2)])
+        self.qs = nn.ModuleList([build_mlp(in_features, *layers, 1) for _ in range(2)])
 
     def forward(self, obs, action):
         x = torch.cat([obs, action], -1)
@@ -18,10 +18,10 @@ class Critic(nn.Module):
 
 
 class Actor(nn.Module):
-    def __init__(self, in_features, out_features, layers, mean_scale=1, init_std=2.):
+    def __init__(self, in_features, out_features, layers, mean_scale=1, init_std=1.):
         super().__init__()
         self.mean_scale = mean_scale
-        self.mlp = build_mlp((in_features, *layers, 2*out_features))
+        self.mlp = build_mlp(in_features, *layers, 2*out_features)
         self.init_std = torch.log(torch.tensor(init_std).exp() - 1.)
 
     def forward(self, x):

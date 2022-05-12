@@ -234,21 +234,3 @@ class PointCloudWrapper(Wrapper):
 
     def observation_spec(self):
         return specs.Array(shape=(self.pn_number, 3), dtype=np.float32, name='point_cloud')
-
-
-class DiscreteActionWrapper(Wrapper):
-    def __init__(self, env, num_actions):
-        super().__init__(env)
-        act_spec = env.action_spec()
-        self._action_spec = specs.BoundedArray(shape=act_spec.shape, dtype=int,
-                                               minimum=0, maximum=num_actions)
-
-        self._sp = np.linspace(act_spec.minimum, act_spec.maximum, num_actions)
-
-    def step(self, action):
-        action = np.take_along_axis(self._sp, action, axis=0)
-        return self.env.step(action)
-
-    def action_spec(self):
-        return self._action_spec
-
