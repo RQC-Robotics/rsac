@@ -63,7 +63,7 @@ class StatesWrapper(Wrapper):
         return self._observation_spec
 
 
-class FrameSkip(Wrapper):
+class ActionRepeat(Wrapper):
     def __init__(self, env, frames_number: int):
         assert frames_number > 0
         super().__init__(env)

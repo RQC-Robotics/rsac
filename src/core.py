@@ -86,5 +86,5 @@ class RLAlg:
             env = wrappers.PointCloudWrapper(env, pn_number=self.config.pn_number)
         else:
             raise NotImplementedError
-        env = wrappers.FrameSkip(env, self.config.action_repeat)
-        return env, env.observation_spec(), env.action_spec()
+        env = wrappers.ActionRepeat(env, self.config.action_repeat)
+        return env

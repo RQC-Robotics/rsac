@@ -29,6 +29,7 @@ class RSAC(nn.Module):
 
         if training:
             action = dist.sample()
+            action = torch.clamp(action, min=-utils.ACT_LIM, max=utils.ACT_LIM)
         else:
             action = dist.sample([100]).mean(0)
 
@@ -36,11 +37,13 @@ class RSAC(nn.Module):
         return action, log_prob, state
 
     def step(self, obs, actions, rewards, log_probs, hidden_states):
-        import pdb; pdb.set_trace()
         # burn_in
-        target_obs_emb, _ = self._target_encoder(obs)
-        init_hidden = self.cell_roll(self._target_cell, obs[:self._c.burn_in], hidden_states[0])[-1]
-        obs, actions, rewards, log_probs = map(lambda t: t[self._c.burn_in:], (obs, actions, rewards, log_probs))
+        if self._c.burn_in > 0:
+            target_obs_emb, _ = self._target_encoder(obs[:self._c.burn_in])
+            init_hidden = self.cell_roll(self._target_cell, target_obs_emb, hidden_states[0])[-1]
+            obs, actions, rewards, log_probs = map(lambda t: t[self._c.burn_in:], (obs, actions, rewards, log_probs))
+        else:
+            init_hidden = hidden_states[0]
 
         obs_emb, _ = self.encoder(obs)
         target_obs_emb, _ = self._target_encoder(obs)
@@ -57,11 +60,12 @@ class RSAC(nn.Module):
 
         self.optim.zero_grad()
         model_loss.backward()
-        clip_grad_norm_(self.parameters(), self._c.max_grad)
+        clip_grad_norm_(self._rl_params, self._c.max_grad)
+        clip_grad_norm_(self._ae_params, self._c.max_grad)
         self.optim.step()
-        self.callback.add_scalar('train/actor_loss', actor_loss.item(), self._step)
-        self.callback.add_scalar('train/auxiliary_loss', auxiliary_loss.item(), self._step)
-        self.callback.add_scalar('train/critic_loss', rl_loss.item(), self._step)
+        self.callback.add_scalar('train/actor_loss', actor_loss, self._step)
+        self.callback.add_scalar('train/auxiliary_loss', auxiliary_loss, self._step)
+        self.callback.add_scalar('train/critic_loss', rl_loss, self._step)
         self.callback.add_scalar('train/actor_grads', utils.grads_sum(self.actor), self._step)
         self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
         self.callback.add_scalar('train/encoder_grads', utils.grads_sum(self.encoder), self._step)
@@ -86,14 +90,14 @@ class RSAC(nn.Module):
             deltas = rewards + self._c.discount*soft_values.roll(-1, 0) - target_q_values
             target_q_values, deltas, cs = map(lambda t: t[:-1], (target_q_values, deltas, cs))
             deltas = utils.retrace(deltas, cs, self._c.discount, self._c.disclam)
-            target_q_values += deltas
+            target_q_values = target_q_values + deltas
 
         q_values = self.critic(states, actions)
         loss = (q_values[:-1] - target_q_values).pow(2)
         loss = self._sequence_discount(loss)*loss
 
-        self.callback.add_scalar('train/mean_reward', rewards.mean().item() / self._c.action_repeat, self._step)
-        self.callback.add_scalar('train/mean_value', q_values.mean().item(), self._step)
+        self.callback.add_scalar('train/mean_reward', rewards.mean() / self._c.action_repeat, self._step)
+        self.callback.add_scalar('train/mean_value', q_values.mean(), self._step)
         self.callback.add_scalar('train/retrace_weight', cs.mean(), self._step)
         self.callback.add_scalar('train/mean_deltas', deltas.mean(), self._step)
         return loss.mean()
@@ -111,8 +115,8 @@ class RSAC(nn.Module):
 
         with torch.no_grad():
             ent = -log_prob.mean()
-            self.callback.add_scalar('train/actor_entropy', ent.item(), self._step)
-            self.callback.add_scalar('train/alpha', alpha.item(), self._step)
+            self.callback.add_scalar('train/actor_entropy', ent, self._step)
+            self.callback.add_scalar('train/alpha', alpha, self._step)
         
         actor_loss = torch.mean(alpha.detach() * log_prob - q_values, 0)
         actor_loss = self._sequence_discount(actor_loss)*actor_loss

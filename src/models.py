@@ -1,6 +1,5 @@
 import torch
 from .utils import build_mlp, TanhTransform
-from torchvision import transforms as T
 nn = torch.nn
 F = nn.functional
 td = torch.distributions
