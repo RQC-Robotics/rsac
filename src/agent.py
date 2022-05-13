@@ -29,25 +29,23 @@ class RSAC(nn.Module):
 
         if training:
             action = dist.sample()
-            action = torch.clamp(action, min=-utils.ACT_LIM, max=utils.ACT_LIM)
         else:
-            action = dist.sample([100]).mean(0)
+            action = dist.sample([1000]).mean(0)
 
         log_prob = dist.log_prob(action)
         return action, log_prob, state
 
     def step(self, obs, actions, rewards, log_probs, hidden_states):
         # burn_in
+        init_hidden = hidden_states[0]
         if self._c.burn_in > 0:
             target_obs_emb, _ = self._target_encoder(obs[:self._c.burn_in])
-            init_hidden = self.cell_roll(self._target_cell, target_obs_emb, hidden_states[0])[-1]
+            init_hidden = self.cell_roll(self._target_cell, target_obs_emb, init_hidden)[-1]
             obs, actions, rewards, log_probs = map(lambda t: t[self._c.burn_in:], (obs, actions, rewards, log_probs))
-        else:
-            init_hidden = hidden_states[0]
 
         obs_emb, _ = self.encoder(obs)
         target_obs_emb, _ = self._target_encoder(obs)
-        states = self.cell_roll(self.cell, obs_emb, init_hidden, bptt=self._c.bptt)
+        states = self.cell_roll(self.cell, obs_emb, init_hidden)
         target_states = self.cell_roll(self._target_cell, target_obs_emb, init_hidden)
 
         alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -20.))
@@ -90,7 +88,7 @@ class RSAC(nn.Module):
             deltas = rewards + self._c.discount*soft_values.roll(-1, 0) - target_q_values
             target_q_values, deltas, cs = map(lambda t: t[:-1], (target_q_values, deltas, cs))
             deltas = utils.retrace(deltas, cs, self._c.discount, self._c.disclam)
-            target_q_values = target_q_values + deltas
+            target_q_values += deltas
 
         q_values = self.critic(states, actions)
         loss = (q_values[:-1] - target_q_values).pow(2)
@@ -152,12 +150,10 @@ class RSAC(nn.Module):
             raise NotImplementedError
 
     @staticmethod
-    def cell_roll(cell, inp, state, bptt=-1):
+    def cell_roll(cell, inp, state):
         states = []
         for i, x in enumerate(inp):
             state = cell(x, state)
-            if bptt > 0 and i % bptt == 0:
-                state = state.detach()
             states.append(state)
         return torch.stack(states)
 
@@ -211,7 +207,7 @@ class RSAC(nn.Module):
             {'params': self._ae_params, 'lr': self._c.ae_lr, 'weight_decay': self._c.weight_decay},
             {'params': [self._log_alpha], 'lr': self._c.dual_lr}
         ])
-        self._target_entropy = -self.act_dim
+        self._target_entropy = -3.*self.act_dim
         self.to(self.device)
 
     @torch.no_grad()

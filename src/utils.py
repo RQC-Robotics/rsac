@@ -92,11 +92,7 @@ class TrajectoryBuffer(Dataset):
 
 
 class TanhTransform(td.transforms.TanhTransform):
-    lim = .999997
-
-    def _call(self, x):
-        x = x.tanh()
-        return self._truncate(x)
+    _lim = .9999997
 
     def _inverse(self, y):
         y = self._truncate(y)
@@ -104,9 +100,10 @@ class TanhTransform(td.transforms.TanhTransform):
 
     @classmethod
     def _truncate(cls, x):
-        return torch.clamp(x, min=-cls.lim, max=cls.lim)
+        return torch.clamp(x, min=-cls._lim, max=cls._lim)
 
 
+@torch.no_grad()
 def soft_update(target, online, rho):
     for pt, po in zip(target.parameters(), online.parameters()):
         pt.copy_(rho * pt + (1. - rho) * po)

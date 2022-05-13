@@ -39,16 +39,20 @@ class Actor(nn.Module):
         return dist
 
 
-class DummyEncoder(nn.Module):
-    def __init__(self, in_features, out_features):
+class Embedding(nn.Module):
+    def __init__(self, *sizes, act=nn.ELU):
         super().__init__()
         self.emb = nn.Sequential(
-                nn.Linear(in_features, out_features),
-                nn.ELU(),
-                nn.Linear(out_features, out_features),
-                nn.Tanh(),
-                )
+            build_mlp(*sizes, act=act),
+            nn.LayerNorm(sizes[-1]),
+            nn.Tanh()
+        )
 
+    def forward(self, x):
+        return self.emb(x)
+
+
+class DummyEncoder(Embedding):
     def forward(self, x):
         return self.emb(x), None
 
@@ -117,12 +121,7 @@ class PointCloudEncoderGlobal(nn.Module):
             features_from_layers = (features_from_layers, )
         self.selected_layers = features_from_layers
         self.fc_size = sizes[-1] * (1 + sum([sizes[i] for i in self.selected_layers]))
-
-        self.fc = nn.Sequential(
-            nn.Linear(self.fc_size, out_features),
-            nn.LayerNorm(out_features),
-            nn.Tanh()
-        )
+        self.fc = Embedding(self.fc.size, out_features)
 
     def forward(self, x):
         features = [x]
@@ -158,9 +157,7 @@ class PixelEncoder(nn.Module):
             nn.Conv2d(depth, depth, 3, 1),
             act(),
             nn.Flatten(),
-            nn.Linear(depth*35*35, out_features),
-            nn.LayerNorm(out_features),
-            nn.Tanh()
+            Embedding(depth*35*35, out_features)
         )
 
     def forward(self, img):

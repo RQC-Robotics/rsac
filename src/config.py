@@ -33,13 +33,13 @@ class Config(BaseConfig):
     action_repeat: int = 2
     spr_coef: float = 2.
     spr_depth: int = 5
-    init_log_alpha: float = 1.
+    init_log_alpha: float = -3.
 
     # architecture
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
     hidden_dim: int = 256
-    obs_emb_dim: int = 50
+    obs_emb_dim: int = 64 # 64
     mean_scale: float = 5.
 
     # PointNet
@@ -55,16 +55,15 @@ class Config(BaseConfig):
     critic_tau: float = .995
     actor_tau: float = .995
     encoder_tau: float = .995
-    max_grad: float = 40.
+    max_grad: float = 50.
 
     total_steps: int = 4 * 10 ** 6
-    training_steps: int = 10
-    seq_len: int = 50
+    training_steps: int = 100
+    seq_len: int = 10
     batch_size: int = 128
     eval_freq: int = 20000
     buffer_size: int = 1000
-    burn_in: int = 20
-    bptt: int = -1
+    burn_in: int = 40
 
     # task
     task: str = 'walker_stand'
