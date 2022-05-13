@@ -4,8 +4,6 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 import pathlib
-import datetime
-from collections import deque
 import numpy as np
 import pickle
 torch.autograd.set_detect_anomaly(True)
@@ -15,12 +13,12 @@ class RLAlg:
     def __init__(self, config):
 
         self.config = config
-        self.env, obs_spec, act_spec = self._make_env()
+        self.env = self.make_env()
         self._task_path = pathlib.Path(config.logdir).joinpath(
             f'./{config.task}/{config.observe}/{config.aux_loss}')
         self.callback = SummaryWriter(log_dir=self._task_path)
-        self.agent = RSAC(obs_spec, act_spec, config, self.callback)
-        self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len)
+        self.agent = RSAC(self.env, config, self.callback)
+        self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len+config.burn_in)
         self.interactions_count = 0
 
     def learn(self):
@@ -61,12 +59,12 @@ class RLAlg:
             'params': self.agent.state_dict(),
             'optim': self.agent.optim.state_dict(),
         }, self._task_path / 'checkpoint')
-        with open(self._task_path / 'buffer', 'wb') as b:
-            pickle.dump(self.buffer, b)
+        with open(self._task_path / 'buffer', 'wb') as buffer:
+            pickle.dump(self.buffer, buffer)
 
-    def load(self, path):
+    def load(self, path, **kwargs):
         path = pathlib.Path(path)
-        [f.unlink() for f in path.iterdir() if f.match('*tfevents*')]
+        [f.unlink() for f in path.iterdir() if f.match('*tfevents*')]  # erase prev logs
         self.config = self.config.load(path / 'config.yml', **kwargs)
         if (path / 'checkpoint').exists():
             chkp = torch.load(path / 'checkpoint')
@@ -75,10 +73,10 @@ class RLAlg:
                 self.agent.optim.load_state_dict(chkp['optim'])
             self.interactions_count = chkp['interactions']
             
-        with open(self._task_path / 'buffer', 'rb') as b:
-            self.buffer = pickle.load(b)
+        with open(self._task_path / 'buffer', 'rb') as buffer:
+            self.buffer = pickle.load(buffer)
 
-    def _make_env(self):
+    def make_env(self):
         env = utils.make_env(self.config.task)
         if self.config.observe == 'states':
             env = wrappers.StatesWrapper(env)

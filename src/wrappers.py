@@ -1,9 +1,7 @@
-import torch
 import numpy as np
 from collections import defaultdict, deque
 from dm_env import specs
 from dm_control.mujoco import wrapper
-from dm_control.mujoco.engine import Camera
 from dm_control.mujoco.wrapper.mjbindings import enums
 
 
@@ -66,7 +64,8 @@ class StatesWrapper(Wrapper):
 
 
 class FrameSkip(Wrapper):
-    def __init__(self, env, frames_number):
+    def __init__(self, env, frames_number: int):
+        assert frames_number > 0
         super().__init__(env)
         self.fn = frames_number
 
@@ -105,7 +104,7 @@ class FrameStack(Wrapper):
 
 class Monitor(Wrapper):
     def __init__(self, env):
-        self.env = env
+        super().__init__(env)
         self._data = defaultdict(list)
 
     def reset(self):
@@ -161,16 +160,17 @@ class PixelsWrapper(Wrapper):
 class PointCloudWrapper(Wrapper):
     def __init__(self, env, pn_number=1000, render_kwargs=None, static_camera=True, as_pixels=False):
         super().__init__(env)
-
         self.render_kwargs = render_kwargs or dict(camera_id=0, height=240, width=320)
+        self.pn_number = pn_number
+
         self.scene_option = wrapper.MjvOption()
         self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0  # results in wrong segmentation for some envs
-        self.pn_number = pn_number
+
         self.static_camera = static_camera
+        self.as_pixels = as_pixels
         self._partial_sum = None
         if static_camera:
             self._inverse_matrix = self.inverse_matrix()
-        self.as_pixels = as_pixels
 
     def observation(self, timestamp):
         depth_map = self.physics.render(depth=True, **self.render_kwargs, scene_option=self.scene_option)

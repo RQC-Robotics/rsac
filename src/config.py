@@ -36,8 +36,8 @@ class Config(BaseConfig):
     init_log_alpha: float = 1.
 
     # architecture
-    critic_layers: tuple = (400, 300)
-    actor_layers: tuple = (200, 200)
+    critic_layers: tuple = (256, 256)
+    actor_layers: tuple = (256, 256)
     hidden_dim: int = 256
     obs_emb_dim: int = 50
     mean_scale: float = 5.
@@ -48,22 +48,22 @@ class Config(BaseConfig):
     pn_dropout: float = 0.
 
     # train
-    rl_lr: float = 1e-3
-    ae_lr: float = 1e-3
+    rl_lr: float = 3e-4
+    ae_lr: float = 3e-4
     dual_lr: float = 1e-2
     weight_decay: float = 1e-7
-    critic_tau: float = .99
-    actor_tau: float = .99
-    encoder_tau: float = .99
+    critic_tau: float = .995
+    actor_tau: float = .995
+    encoder_tau: float = .995
     max_grad: float = 40.
 
     total_steps: int = 4 * 10 ** 6
-    training_steps: int = 100
+    training_steps: int = 10
     seq_len: int = 50
-    batch_size: int = 50
+    batch_size: int = 128
     eval_freq: int = 20000
     buffer_size: int = 1000
-    burn_in: int = 10
+    burn_in: int = 20
     bptt: int = -1
 
     # task
