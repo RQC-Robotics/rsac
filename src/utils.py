@@ -9,7 +9,6 @@ from dm_control import suite, manipulation
 nn = torch.nn
 F = nn.functional
 td = torch.distributions
-ACT_LIM = .99999997
 
 
 def build_mlp(*sizes, act=nn.ELU):
@@ -93,11 +92,19 @@ class TrajectoryBuffer(Dataset):
 
 
 class TanhTransform(td.transforms.TanhTransform):
-    lim = ACT_LIM
-    
+    lim = .999997
+
+    def _call(self, x):
+        x = x.tanh()
+        return self._truncate(x)
+
     def _inverse(self, y):
-        y = torch.clamp(y, min=-self.lim, max=self.lim)
-        return torch.atanh(y)
+        y = self._truncate(y)
+        return y.atanh()
+
+    @classmethod
+    def _truncate(cls, x):
+        return torch.clamp(x, min=-cls.lim, max=cls.lim)
 
 
 def soft_update(target, online, rho):
