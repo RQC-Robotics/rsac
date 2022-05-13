@@ -88,7 +88,7 @@ class TrajectoryBuffer(Dataset):
         return {k: v[start:start+self.seq_len] for k, v in tr.items()}
 
     def __len__(self):
-        return len(self._data)
+        return 100*len(self._data)
 
 
 class TanhTransform(td.transforms.TanhTransform):

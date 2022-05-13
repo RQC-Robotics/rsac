@@ -121,7 +121,7 @@ class PointCloudEncoderGlobal(nn.Module):
             features_from_layers = (features_from_layers, )
         self.selected_layers = features_from_layers
         self.fc_size = sizes[-1] * (1 + sum([sizes[i] for i in self.selected_layers]))
-        self.fc = Embedding(self.fc.size, out_features)
+        self.fc = Embedding(self.fc_size, out_features)
 
     def forward(self, x):
         features = [x]
