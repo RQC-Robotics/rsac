@@ -204,10 +204,10 @@ class RSAC(nn.Module):
 
         self.optim = torch.optim.Adam([
             {'params': self._rl_params, 'lr': self._c.rl_lr},
-            {'params': self._ae_params, 'lr': self._c.ae_lr, 'weight_decay': self._c.weight_decay},
+            {'params': self._ae_params, 'lr': self._c.ae_lr},#, 'weight_decay': self._c.weight_decay},
             {'params': [self._log_alpha], 'lr': self._c.dual_lr}
         ])
-        self._target_entropy = -3.*self.act_dim
+        self._target_entropy = -self.act_dim
         self.to(self.device)
 
     @torch.no_grad()

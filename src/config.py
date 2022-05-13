@@ -33,7 +33,7 @@ class Config(BaseConfig):
     action_repeat: int = 2
     spr_coef: float = 2.
     spr_depth: int = 5
-    init_log_alpha: float = -3.
+    init_log_alpha: float = -4.
 
     # architecture
     critic_layers: tuple = (256, 256)
