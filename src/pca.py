@@ -1,9 +1,10 @@
+import torch
 import pathlib
 import argparse
-from collections import defaultdict
-from . import utils, wrappers, core
 import matplotlib.pyplot as plt
-import torch
+from . import utils, wrappers
+from .config import Config
+from .core import RLAlg
 from torch.utils.data import DataLoader, Dataset
 nn = torch.nn
 
@@ -11,18 +12,25 @@ nn = torch.nn
 class PCA(nn.Module):
     def __init__(self, alg, lr=1e-3):
         super().__init__()
-        self.encoder = alg.agent.encoder
-        self.device = alg.agent.device
-        self.head = nn.Linear(alg.config.obs_emb_dim, len(alg.env.physics.state())).to(alg.agent.device)
+        self.alg = alg
+        self.head = nn.Linear(alg.config.hidden_dim, len(alg.env.physics.state())).to(alg.agent.device)
         self.optim = torch.optim.SGD(self.head.parameters(), lr=lr)
 
-    def forward(self, observations):
+    def observe(self, obs, hidden):
+        if not torch.is_tensor(hidden):
+            hidden = torch.zeros(obs.size(0), self.alg.config.hidden_dim, device=self.alg.agent.device)
         with torch.no_grad():
-            obs_emb, _ = self.encoder(observations)
-        return self.head(obs_emb)
+            obs, _ = self.alg.agent.encoder(obs)
+            hidden = self.alg.agent.cell(obs, hidden)
+        return self.head(hidden), hidden
 
     def learn(self, observations, states):
-        states_pred = self(observations)
+        hidden = None
+        states_pred = []
+        for obs in observations:
+            state, hidden = self.observe(obs, hidden)
+            states_pred.append(state)
+        states_pred = torch.stack(states_pred)
         loss = (states_pred - states).pow(2).mean()
         self.optim.zero_grad()
         loss.backward()
@@ -52,31 +60,27 @@ def parse_args():
 
 def train_pca(path, lr, epochs, batch_size):
     path = pathlib.Path(path)
-    config = core.Config()
+    config = Config()
     config = config.load(path / 'config.yml')
-    alg = core.RLAlg(config)
+    alg = RLAlg(config)
     alg.load(path)
     pca = PCA(alg, lr)
     monitor = wrappers.Monitor(alg.env)
 
-    def policy(obs, state, training):
-        obs = torch.from_numpy(obs[None]).to(alg.agent.device)
-        action, log_prob, state = alg.agent.policy(obs, state, training)
-        action, log_prob = map(lambda t: t.detach().cpu().numpy().flatten(), (action, log_prob))
-        return action, log_prob, state
+    def get_data(monitor, detach=False):
+        utils.simulate(monitor, alg.policy, training=False)
+        data = monitor.data
+        obs, states = map(lambda k: torch.from_numpy(data[k]).to(alg.agent.device).unsqueeze(1),
+                          ('observations', 'states'))
+        if detach:
+            obs, states = map(lambda t: t.detach().cpu().numpy(), (obs, states))
+        return obs, states
 
     for _ in range(epochs):
-        utils.simulate(monitor, policy, False)
-        ds = DictDataset(monitor.data)
-        dl = DataLoader(ds, batch_size=batch_size, shuffle=True)
-        loss = 0
-        for item in dl:
-            obs, states = map(lambda k: item[k].to(alg.agent.device), ('observations', 'states'))
-            loss += pca.learn(obs, states)
+        observations, states = get_data(monitor)
+        loss = pca.learn(observations, states)
         print(f'Epoch loss: {loss}')
 
-    utils.simulate(monitor, policy, False)
-    obs, states = map(lambda k: torch.from_numpy(monitor.data[k]).to(pca.device), ('observations', 'states'))
     states_pred, states = map(lambda t: t.detach().cpu().numpy(), (pca(obs), states))
     for i in range(states_pred.shape[-1]):
         plt.figure(figsize=(10, 6))

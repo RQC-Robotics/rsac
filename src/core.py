@@ -22,16 +22,8 @@ class RLAlg:
         self.interactions_count = 0
 
     def learn(self):
-        self.config.save(self._task_path / 'config.yml')
-
-        def policy(obs, state, training):
-            obs = torch.from_numpy(obs[None]).to(self.agent.device)
-            action, log_prob, state = self.agent.policy(obs, state, training)
-            action, log_prob = map(lambda t: t.detach().cpu().numpy().flatten(), (action, log_prob))
-            return action, log_prob, state
-
         while self.interactions_count < self.config.total_steps:
-            tr = utils.simulate(self.env, policy, True)
+            tr = utils.simulate(self.env, self.policy, True)
             self.buffer.add(tr)
             self.interactions_count += 1000
 
@@ -46,7 +38,7 @@ class RLAlg:
 
             if self.interactions_count % self.config.eval_freq == 0:
                 self.agent.eval()
-                scores = [utils.simulate(self.env, policy, False)['rewards'].sum() for _ in range(10)]
+                scores = [utils.simulate(self.env, self.policy, False)['rewards'].sum() for _ in range(10)]
                 self.callback.add_scalar('test/eval_reward', np.mean(scores), self.interactions_count)
                 self.callback.add_scalar('test/eval_std', np.std(scores), self.interactions_count)
 
@@ -88,3 +80,9 @@ class RLAlg:
             raise NotImplementedError
         env = wrappers.ActionRepeat(env, self.config.action_repeat)
         return env
+
+    def policy(self, obs, state, training):
+        obs = torch.from_numpy(obs[None]).to(self.agent.device)
+        action, log_prob, state = self.agent.policy(obs, state, training)
+        action, log_prob = map(lambda t: t.detach().cpu().numpy().flatten(), (action, log_prob))
+        return action, log_prob, state
