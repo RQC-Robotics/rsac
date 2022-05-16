@@ -52,7 +52,6 @@ def train_pca(path, lr, epochs, batch_size):
     path = pathlib.Path(path)
     config = Config()
     config = config.load(path / 'config.yml')
-    config.device='cpu'
     alg = RLAlg(config)
     alg.load(path)
     pca = PCA(alg, lr)
