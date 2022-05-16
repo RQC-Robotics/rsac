@@ -53,7 +53,7 @@ class RSAC(nn.Module):
 
         rl_loss = self._policy_learning(states, actions, rewards, log_probs, target_states, alpha.detach())
         auxiliary_loss = self._auxiliary_loss(obs, actions, states, target_states)
-        actor_loss, dual_loss = self._policy_improvement(states.detach(), alpha)
+        actor_loss, dual_loss = self._policy_improvement(target_states, alpha)
         model_loss = rl_loss + auxiliary_loss + actor_loss + dual_loss
 
         self.optim.zero_grad()
@@ -92,7 +92,7 @@ class RSAC(nn.Module):
 
         q_values = self.critic(states, actions)
         loss = (q_values[:-1] - target_q_values).pow(2)
-        loss = self._sequence_discount(loss)*loss
+        loss *= self._sequence_discount(loss)
 
         self.callback.add_scalar('train/mean_reward', rewards.mean() / self._c.action_repeat, self._step)
         self.callback.add_scalar('train/mean_value', q_values.mean(), self._step)
@@ -104,12 +104,10 @@ class RSAC(nn.Module):
         dist = self.actor(states)
         actions = dist.rsample([self._c.num_samples])
         log_prob = dist.log_prob(actions)
-        self.critic.requires_grad_(False)
-        q_values = self.critic(
+        q_values = self._target_critic(
             torch.repeat_interleave(states[None], self._c.num_samples, 0),
             actions
         ).min(-1).values
-        self.critic.requires_grad_(True)
 
         with torch.no_grad():
             ent = -log_prob.mean()
@@ -117,7 +115,7 @@ class RSAC(nn.Module):
             self.callback.add_scalar('train/alpha', alpha, self._step)
         
         actor_loss = torch.mean(alpha.detach() * log_prob - q_values, 0)
-        actor_loss = self._sequence_discount(actor_loss)*actor_loss
+        actor_loss *= self._sequence_discount(actor_loss)
         dual_loss = - alpha * (log_prob.detach().mean() + self._target_entropy)
         return actor_loss.mean(), dual_loss
 
@@ -204,7 +202,7 @@ class RSAC(nn.Module):
 
         self.optim = torch.optim.Adam([
             {'params': self._rl_params, 'lr': self._c.rl_lr},
-            {'params': self._ae_params, 'lr': self._c.ae_lr},#, 'weight_decay': self._c.weight_decay},
+            {'params': self._ae_params, 'lr': self._c.ae_lr, 'weight_decay': self._c.weight_decay},
             {'params': [self._log_alpha], 'lr': self._c.dual_lr}
         ])
         self._target_entropy = -self.act_dim
@@ -217,3 +215,4 @@ class RSAC(nn.Module):
         utils.soft_update(self._target_cell, self.cell, self._c.critic_tau)
         utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
         utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)
+

@@ -38,7 +38,7 @@ class Config(BaseConfig):
     # architecture
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
-    hidden_dim: int = 256
+    hidden_dim: int = 128
     obs_emb_dim: int = 64
     mean_scale: float = 5.
 
@@ -59,7 +59,7 @@ class Config(BaseConfig):
 
     total_steps: int = 4 * 10 ** 6
     training_steps: int = 100
-    seq_len: int = 10
+    seq_len: int = 20
     batch_size: int = 128
     eval_freq: int = 20000
     buffer_size: int = 1000

@@ -181,8 +181,7 @@ class PointCloudWrapper(Wrapper):
         point_cloud = np.reshape(point_cloud, (-1, 3))
         segmentation_mask = self._segmentation_mask()
         # TODO: fix orientation so mask can be used
-        #mask = self._mask(point_cloud)  # additional mask if needed
-        mask = True
+        mask = self._mask(point_cloud)  # additional mask if needed
         selected_points = point_cloud[segmentation_mask & mask]
         return self._to_fixed_number(selected_points).astype(np.float32)
 
