@@ -78,7 +78,9 @@ class RLAlg:
             env = wrappers.PointCloudWrapper(env, pn_number=self.config.pn_number)
         else:
             raise NotImplementedError
+        # while order of these wrappers do matter it differs in amount of information given to the agent
         env = wrappers.ActionRepeat(env, self.config.action_repeat)
+        env = wrappers.FrameStack(env, self.config.frames_stack)
         return env
 
     def policy(self, obs, state, training):
