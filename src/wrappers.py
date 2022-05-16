@@ -101,6 +101,13 @@ class FrameStack(Wrapper):
     def observation(self, timestamp):
         return np.stack(self._state)
 
+    def observation_spec(self):
+        spec = self.env.observation_spec()
+        return spec.replace(
+            shape=(self.fn, *spec.shape),
+            name=f'{self.fn}_stacked_{spec.name}'
+        )
+
 
 class Monitor(Wrapper):
     def __init__(self, env):
@@ -229,7 +236,7 @@ class PointCloudWrapper(Wrapper):
     def _mask(self, point_cloud):
         """ Heuristic to cut outliers """
         threshold = np.quantile(point_cloud[..., 2], .99)
-        return point_cloud[..., 2] < min(threshold, 10)
+        return point_cloud[..., 2] < max(threshold, 10)
 
     def observation_spec(self):
         return specs.Array(shape=(self.pn_number, 3), dtype=np.float32, name='point_cloud')

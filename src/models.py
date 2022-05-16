@@ -54,7 +54,7 @@ class Embedding(nn.Module):
 
 class DummyEncoder(Embedding):
     def forward(self, x):
-        return self.emb(x), None
+        return self.emb(x)
 
 
 class PointCloudDecoder(nn.Module):
@@ -100,7 +100,7 @@ class PointCloudEncoder(nn.Module):
     def forward(self, x):
         x = self.convs(x)
         values, indices = torch.max(x, -2)
-        return self.fc(values), indices
+        return self.fc(values)#, indices
 
 
 class PointCloudEncoderGlobal(nn.Module):
@@ -135,7 +135,7 @@ class PointCloudEncoderGlobal(nn.Module):
                 [self._gather(features[ind], indices) for ind in self.selected_layers],
                 -1)
             values = torch.cat((values.unsqueeze(-1), selected_features), -1).flatten(-2)
-        return self.fc(values), indices
+        return self.fc(values)#, indices
 
     @staticmethod
     def _gather(features, indices):
@@ -161,14 +161,11 @@ class PixelEncoder(nn.Module):
         )
 
     def forward(self, img):
-        reshape = img.ndimension() > 4  # hide temporal axis
-        if reshape:
-            seq_len, batch_size = img.shape[:2]
-            img = img.flatten(0, 1)
+        prefix_shape = img.shape[:-3]
+        img = img.flatten(0, len(prefix_shape)-1)
         img = self.convs(img)
-        if reshape:
-            img = img.reshape(seq_len, batch_size, -1)
-        return img, None
+        img = img.reshape(*prefix_shape, -1)
+        return img#, None
 
 
 class PixelDecoder(nn.Module):
@@ -188,11 +185,8 @@ class PixelDecoder(nn.Module):
         )
 
     def forward(self, x):
-        reshape = x.ndimension() > 2  # hide temporal axis
-        if reshape:
-            seq_len, batch_size = x.shape[:2]
-            x = x.flatten(0, 1)
+        prefix_shape = x.shape[:-1]
+        x = x.flatten(0, len(prefix_shape)-1)
         img = self.deconvs(x)
-        if reshape:
-            img = img.reshape(seq_len, batch_size, 3, 84, 84)
+        img = img.reshape(*prefix_shape, 3, 84, 84)
         return img
