@@ -10,7 +10,7 @@ class Wrapper:
         self.env = env
 
     def observation(self, timestamp):
-        return timestamp
+        return timestamp.observation
 
     def reward(self, timestamp):
         return np.float32(timestamp.reward)

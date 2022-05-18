@@ -46,6 +46,7 @@ class RLAlg:
                 self.save()
 
     def save(self):
+        self.config.save(self._task_path / 'config.yml')
         torch.save({
             'interactions': self.interactions_count,
             'params': self.agent.state_dict(),
