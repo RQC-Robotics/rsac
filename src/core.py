@@ -87,6 +87,7 @@ class RLAlg:
         else:
             raise NotImplementedError
         env = wrappers.ActionRepeat(env, self.config.action_repeat)
+        env = wrappers.FrameStack(env, self.config.frames_stack)
         return env
 
     def policy(self, obs, state, training):

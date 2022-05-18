@@ -54,7 +54,7 @@ class Embedding(nn.Module):
 
 class DummyEncoder(Embedding):
     def forward(self, x):
-        return self.emb(x), None
+        return self.emb(x)
 
 
 class PointCloudDecoder(nn.Module):
@@ -100,7 +100,7 @@ class PointCloudEncoder(nn.Module):
     def forward(self, x):
         x = self.convs(x)
         values, indices = torch.max(x, -2)
-        return self.fc(values), indices
+        return self.fc(values)
 
 
 class PointCloudEncoderGlobal(nn.Module):
@@ -136,7 +136,7 @@ class PointCloudEncoderGlobal(nn.Module):
                 [self._gather(features[ind], indices) for ind in self.selected_layers],
                 -1)
             values = torch.cat((values.unsqueeze(-1), selected_features), -1).flatten(-2)
-        return self.fc(values), indices
+        return self.fc(values)
 
     @staticmethod
     def _gather(features, indices):
@@ -166,7 +166,7 @@ class PixelEncoder(nn.Module):
         img = img.flatten(0, len(prefix_shape)-1)
         img = self.convs(img)
         img = img.reshape(*prefix_shape, -1)
-        return img, None
+        return img
 
 
 class PixelDecoder(nn.Module):
