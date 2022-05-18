@@ -22,18 +22,25 @@ class RLAlg:
         self.interactions_count = 0
 
     def learn(self):
-        while self.interactions_count < self.config.total_steps:
+        def update_buffer():
             tr = utils.simulate(self.env, self.policy, True)
             self.buffer.add(tr)
             self.interactions_count += 1000
 
+        # prefill
+        [update_buffer() for _ in range(10)]
+
+        while self.interactions_count < self.config.total_steps:
+            update_buffer()
             dl = DataLoader(self.buffer, batch_size=self.config.batch_size)
             self.agent.train()
             for i, tr in enumerate(dl):
-                obs, actions, rewards, log_probs, hidden_states = map(lambda k: tr[k].to(self.agent.device).transpose(0, 1),
-                    ('observations', 'actions', 'rewards', 'log_probs', 'states'))
+                obs, actions, rewards, log_probs, hidden_states = map(
+                    lambda k: tr[k].to(self.agent.device).transpose(0, 1),
+                    ('observations', 'actions', 'rewards', 'log_probs', 'states')
+                )
                 self.agent.step(obs, actions, rewards, log_probs, hidden_states)
-                if i > self.config.training_steps:
+                if i == self.config.training_steps:
                     break
 
             if self.interactions_count % self.config.eval_freq == 0:

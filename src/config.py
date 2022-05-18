@@ -50,7 +50,7 @@ class Config(BaseConfig):
     # train
     rl_lr: float = 3e-4
     ae_lr: float = 3e-4
-    dual_lr: float = 1e-2
+    dual_lr: float = 1e-3
     weight_decay: float = 1e-7
     critic_tau: float = .995
     actor_tau: float = .995

@@ -88,20 +88,16 @@ class TrajectoryBuffer(Dataset):
         return {k: v[start:start+self.seq_len] for k, v in tr.items()}
 
     def __len__(self):
-        return 100*len(self._data)
+        # coef can be estimated as ~ trajectory_len / training_sequence_len
+        return 50*len(self._data)
 
 
 class TanhTransform(td.transforms.TanhTransform):
-    #_lim = .9999997
-    _lim = .997
+    _lim = .9999997
 
     def _inverse(self, y):
-        y = self._truncate(y)
+        y = torch.clamp(y, min=-self._lim, max=self._lim)
         return y.atanh()
-
-    @classmethod
-    def _truncate(cls, x):
-        return torch.clamp(x, min=-cls._lim, max=cls._lim)
 
 
 @torch.no_grad()

@@ -34,7 +34,7 @@ class Actor(nn.Module):
     @staticmethod
     def get_dist(mu, std):
         dist = td.Normal(mu, std)
-        dist = td.transformed_distribution.TransformedDistribution(dist, TanhTransform(cache_size=1))
+        dist = td.transformed_distribution.TransformedDistribution(dist, TanhTransform())
         dist = td.Independent(dist, 1)
         return dist
 
@@ -104,6 +104,7 @@ class PointCloudEncoder(nn.Module):
 
 
 class PointCloudEncoderGlobal(nn.Module):
+    """The same encoder but with an option to process global features of selected points."""
     def __init__(self, in_features, out_features, sizes, dropout=0., act=nn.ELU, features_from_layers=(0,)):
         super().__init__()
 

@@ -7,10 +7,10 @@ import dataclasses
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='Additional arguments which match config field name can be passed',
+        description='Additional arguments that match config fields name can be passed',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument('--load', type=pathlib.Path, help='path to the experiment with config and weights')
+    parser.add_argument('--load', type=pathlib.Path, help='path to the experiment dir')
     for field in dataclasses.fields(Config):
         parser.add_argument(f'--{field.name}', type=field.type, default=field.default, help=str(field.type))
     return parser.parse_args()
