@@ -23,9 +23,9 @@ class RSAC(nn.Module):
         if not torch.is_tensor(state):
             state = torch.zeros((obs.size(0), self._c.hidden_dim), device=self.device)
 
-        obs, _ = self._target_encoder(obs)
-        state = self._target_cell(obs, state)
-        dist = self._target_actor(state)
+        obs = self._target_encoder(obs)
+        #state = self._target_cell(obs, state)
+        dist = self._target_actor(obs)
 
         if training:
             action = dist.sample()
@@ -39,14 +39,16 @@ class RSAC(nn.Module):
         # burn_in
         init_hidden = hidden_states[0]
         if self._c.burn_in > 0:
-            target_obs_emb, _ = self._target_encoder(obs[:self._c.burn_in])
+            target_obs_emb = self._target_encoder(obs[:self._c.burn_in])
             init_hidden = self.cell_roll(self._target_cell, target_obs_emb, init_hidden)[-1]
             obs, actions, rewards, log_probs = map(lambda t: t[self._c.burn_in:], (obs, actions, rewards, log_probs))
 
-        obs_emb, _ = self.encoder(obs)
-        target_obs_emb, _ = self._target_encoder(obs)
-        states = self.cell_roll(self.cell, obs_emb, init_hidden)
-        target_states = self.cell_roll(self._target_cell, target_obs_emb, init_hidden)
+        obs_emb = self.encoder(obs)
+        target_obs_emb = self._target_encoder(obs)
+        # states = self.cell_roll(self.cell, obs_emb, init_hidden)
+        # target_states = self.cell_roll(self._target_cell, target_obs_emb, init_hidden)
+        states = obs_emb
+        target_states = target_obs_emb
 
         alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -20.))
         alpha = F.softplus(alpha) + 1e-8
@@ -104,6 +106,8 @@ class RSAC(nn.Module):
         dist = self.actor(states)
         actions = dist.rsample([self._c.num_samples])
         log_prob = dist.log_prob(actions)
+        # todo here it is possible to separate mean and std and learn them with different learning rates:
+        #   it could helps exploration
         q_values = self._target_critic(
             torch.repeat_interleave(states[None], self._c.num_samples, 0),
             actions
@@ -126,7 +130,7 @@ class RSAC(nn.Module):
         elif self._c.aux_loss == 'reconstruction':
             obs_pred = self.decoder(states_emb)
             if self._c.observe == 'point_cloud':
-                loss = chamfer_distance(obs.flatten(0, 1), obs_pred.flatten(0, 1))[0]
+                loss = chamfer_distance(obs.flatten(0, 2), obs_pred.flatten(0, 2))[0]
             else:
                 loss = (obs_pred - obs).pow(2)
             return loss.mean()
@@ -178,7 +182,7 @@ class RSAC(nn.Module):
         self.prediction = utils.build_mlp(emb, emb, emb)
         self.cos_sim = nn.CosineSimilarity(dim=-1)
 
-        obs_dim = self.obs_spec.shape[0]
+        frames_stack, obs_dim, *_ = self.obs_spec.shape
         if self._c.observe == 'states':
             self.encoder = models.DummyEncoder(obs_dim, emb)
             self.decoder = nn.Linear(hidden, obs_dim)
@@ -189,6 +193,17 @@ class RSAC(nn.Module):
             self.encoder = models.PointCloudEncoderGlobal(3, emb, sizes=self._c.pn_layers,
                                                           dropout=self._c.pn_dropout, features_from_layers=())
             self.decoder = models.PointCloudDecoder(hidden, layers=self._c.pn_layers, pn_number=self._c.pn_number)
+
+        self.encoder = nn.Sequential(
+            self.encoder,
+            nn.Flatten(-2),
+            models.Embedding(frames_stack * emb, emb)
+        )
+        self.decoder = nn.Sequential(
+            models.Embedding(hidden, frames_stack * hidden),
+            nn.Unflatten(-1, (frames_stack, hidden)),
+            self.decoder
+        )
 
         self._log_alpha = nn.Parameter(torch.tensor(self._c.init_log_alpha))
 

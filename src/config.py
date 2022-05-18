@@ -36,6 +36,7 @@ class Config(BaseConfig):
     disclam: float = 1.
     num_samples: int = 32
     action_repeat: int = 2
+    frames_stack: int = 3
     spr_coef: float = 2.
     spr_depth: int = 5
     init_log_alpha: float = -4.
@@ -43,7 +44,7 @@ class Config(BaseConfig):
     # architecture
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
-    hidden_dim: int = 256
+    hidden_dim: int = 64
     obs_emb_dim: int = 64
     mean_scale: float = 5.
 
