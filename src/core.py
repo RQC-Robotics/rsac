@@ -3,6 +3,7 @@ from . import wrappers, utils
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
+from .config import Config
 import pathlib
 import numpy as np
 import pickle
@@ -28,11 +29,11 @@ class RLAlg:
             self.interactions_count += 1000
 
         # prefill
-        [update_buffer() for _ in range(10)]
+        [update_buffer() for _ in range(20)]
 
         while self.interactions_count < self.config.total_steps:
             update_buffer()
-            dl = DataLoader(self.buffer, batch_size=self.config.batch_size)
+            dl = DataLoader(self.buffer, batch_size=self.config.batch_size, drop_last=True)
             self.agent.train()
             for i, tr in enumerate(dl):
                 obs, actions, rewards, log_probs, hidden_states = map(
@@ -62,19 +63,25 @@ class RLAlg:
         with open(self._task_path / 'buffer', 'wb') as buffer:
             pickle.dump(self.buffer, buffer)
 
-    def load(self, path, **kwargs):
+    @classmethod
+    def load(cls, path, **kwargs):
         path = pathlib.Path(path)
-        [f.unlink() for f in path.iterdir() if f.match('*tfevents*')]  # erase prev logs
-        self.config = self.config.load(path / 'config.yml', **kwargs)
+        [f.unlink() for f in path.iterdir() if f.match('*tfevents*')]
+        config = Config.load(path / 'config.yml', **kwargs)
+        alg = cls(config)
+
         if (path / 'checkpoint').exists():
-            chkp = torch.load(path / 'checkpoint')
+            chkp = torch.load(path / 'checkpoint',
+                              map_location=torch.device(config.device if torch.cuda.is_available() else 'cpu'))
             with torch.no_grad():
-                self.agent.load_state_dict(chkp['params'])
-                self.agent.optim.load_state_dict(chkp['optim'])
-            self.interactions_count = chkp['interactions']
-            
-        with open(self._task_path / 'buffer', 'rb') as buffer:
-            self.buffer = pickle.load(buffer)
+                alg.agent.load_state_dict(chkp['params'], strict=False)
+                alg.agent.optim.load_state_dict(chkp['optim'])
+            alg.interactions_count = chkp['interactions']
+
+        if (path / 'buffer').exists():
+            with open(path / 'buffer', 'rb') as b:
+                alg.buffer = pickle.load(b)
+        return alg
 
     def make_env(self):
         env = utils.make_env(self.config.task)

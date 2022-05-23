@@ -10,12 +10,17 @@ class BaseConfig(ABC):
         with open(file_path, 'w') as f:
             yaml.dump(dataclasses.asdict(self), f)
 
-    def load(self, file_path, **kwargs):
+    @classmethod
+    def load(cls, file_path, **kwargs):
         yaml = YAML()
         with open(file_path) as f:
             config_dict = yaml.load(f)
         config_dict.update(kwargs)
-        return dataclasses.replace(self, **config_dict)
+
+        fields = tuple(map(lambda field: field.name, dataclasses.fields(cls)))
+        config_dict = {k: v for k, v in config_dict.items() if k in fields}
+
+        return cls(**config_dict)
 
     def __post_init__(self):
         for field in dataclasses.fields(self):
@@ -44,7 +49,7 @@ class Config(BaseConfig):
 
     # PointNet
     pn_number: int = 600
-    pn_layers: tuple = (32, 32, 32, 32)
+    pn_layers: tuple = (64, 64, 128, 256)
     pn_dropout: float = 0.
 
     # train
@@ -55,15 +60,15 @@ class Config(BaseConfig):
     critic_tau: float = .995
     actor_tau: float = .995
     encoder_tau: float = .995
-    max_grad: float = 50.
+    max_grad: float = 100.
 
-    total_steps: int = 4 * 10 ** 6
+    total_steps: int = 2*10**6
     training_steps: int = 100
-    seq_len: int = 40
-    batch_size: int = 64
+    seq_len: int = 50
+    batch_size: int = 50
     eval_freq: int = 20000
     buffer_size: int = 1000
-    burn_in: int = 40
+    burn_in: int = 10
 
     # task
     task: str = 'walker_stand'
