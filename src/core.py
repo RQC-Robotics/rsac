@@ -7,7 +7,6 @@ from .config import Config
 import pathlib
 import numpy as np
 import pickle
-torch.autograd.set_detect_anomaly(True)
 
 
 class RLAlg:
