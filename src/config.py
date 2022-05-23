@@ -39,18 +39,18 @@ class Config(BaseConfig):
     frames_stack: int = 3
     spr_coef: float = 2.
     spr_depth: int = 5
-    init_log_alpha: float = -4.
+    init_log_alpha: float = -3.
 
     # architecture
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
-    hidden_dim: int = 64
-    obs_emb_dim: int = 64
+    hidden_dim: int = 256
+    obs_emb_dim: int = 256
     mean_scale: float = 5.
 
     # PointNet
     pn_number: int = 600
-    pn_layers: tuple = (64, 64, 128, 256)
+    pn_layers: tuple = (64, 128, 256)
     pn_dropout: float = 0.
 
     # train
@@ -69,7 +69,7 @@ class Config(BaseConfig):
     batch_size: int = 50
     eval_freq: int = 20000
     buffer_size: int = 1000
-    burn_in: int = 10
+    burn_in: int = -1
 
     # task
     task: str = 'walker_stand'
