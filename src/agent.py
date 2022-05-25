@@ -95,9 +95,9 @@ class RSAC(nn.Module):
             actions
         ).min(-1).values
 
-        with torch.no_grad():
-            ent = -log_prob.mean()
-            self.callback.add_scalar('train/actor_entropy', ent, self._step)
+        # with torch.no_grad():
+        #     ent = -log_prob.mean()
+        #     self.callback.add_scalar('train/actor_entropy', ent, self._step)
             # self.callback.add_scalar('train/alpha', alpha, self._step)
         
         actor_loss = torch.mean(alpha.detach() * log_prob - q_values, 0)
