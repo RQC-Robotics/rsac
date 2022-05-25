@@ -18,7 +18,7 @@ class RLAlg:
             f'./{config.task}/{config.observe}/{config.aux_loss}')
         self.callback = SummaryWriter(log_dir=self._task_path)
         self.agent = RSAC(self.env, config, self.callback)
-        self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len+config.burn_in)
+        self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len)
         self.interactions_count = 0
 
     def learn(self):
@@ -35,11 +35,11 @@ class RLAlg:
             dl = DataLoader(self.buffer, batch_size=self.config.batch_size, drop_last=True)
             self.agent.train()
             for i, tr in enumerate(dl):
-                obs, actions, rewards, log_probs, hidden_states = map(
+                obs, actions, rewards, log_probs = map(
                     lambda k: tr[k].to(self.agent.device).transpose(0, 1),
-                    ('observations', 'actions', 'rewards', 'log_probs', 'states')
+                    ('observations', 'actions', 'rewards', 'log_probs')
                 )
-                self.agent.step(obs, actions, rewards, log_probs, hidden_states)
+                self.agent.step(obs, actions, rewards, log_probs)
                 if i == self.config.training_steps:
                     break
 
@@ -96,8 +96,8 @@ class RLAlg:
         env = wrappers.FrameStack(env, self.config.frames_stack)
         return env
 
-    def policy(self, obs, state, training):
+    def policy(self, obs, training):
         obs = torch.from_numpy(obs[None]).to(self.agent.device)
-        action, log_prob, state = self.agent.policy(obs, state, training)
+        action, log_prob = self.agent.policy(obs, training)
         action, log_prob = map(lambda t: t.detach().cpu().numpy().flatten(), (action, log_prob))
-        return action, log_prob, state
+        return action, log_prob

@@ -41,21 +41,14 @@ def simulate(env, policy, training):
     # done flags might be useful for another learning alg
     obs = env.reset()
     done = False
-    state = None
-    observations, actions, rewards, dones, log_probs, states = [[] for _ in range(6)]  # states=recurrent hidden
-    detach = lambda t: t.detach().cpu().flatten().numpy()
+    observations, actions, rewards, dones, log_probs = [[] for _ in range(5)]
     while not done:
-        if torch.is_tensor(state):
-            states.append(detach(state))
-            action, log_prob, state = policy(obs, state, training)
-        else:
-            action, log_prob, state = policy(obs, state, training)
-            states.append(detach(torch.zeros_like(state)))
+        action, log_prob = policy(obs, training)
         new_obs, reward, done = env.step(action)
         observations.append(obs)
         actions.append(action)
         dones.append([done])
-        rewards.append([reward])
+        rewards.append(np.float32([reward]))
         log_probs.append(log_prob)
         obs = new_obs
 
@@ -64,7 +57,6 @@ def simulate(env, policy, training):
         actions=actions,
         rewards=rewards,
         done_flags=dones,
-        states=states,
         log_probs=log_probs,
     )
     for k, v in tr.items():

@@ -34,18 +34,17 @@ class Config(BaseConfig):
     # algo
     discount: float = .99
     disclam: float = 1.
-    num_samples: int = 32
+    num_samples: int = 16
     action_repeat: int = 2
     frames_stack: int = 3
     spr_coef: float = 2.
     spr_depth: int = 5
-    init_log_alpha: float = -3.
+    init_log_alpha: float = -2.
 
     # architecture
-    critic_layers: tuple = (256, 256)
+    critic_layers: tuple = (400, 300)
     actor_layers: tuple = (256, 256)
-    hidden_dim: int = 256
-    obs_emb_dim: int = 256
+    obs_emb_dim: int = 64
     mean_scale: float = 5.
 
     # PointNet
@@ -56,7 +55,7 @@ class Config(BaseConfig):
     # train
     rl_lr: float = 3e-4
     ae_lr: float = 3e-4
-    dual_lr: float = 1e-3
+    dual_lr: float = 1e-2
     weight_decay: float = 1e-7
     critic_tau: float = .995
     actor_tau: float = .995
@@ -65,11 +64,10 @@ class Config(BaseConfig):
 
     total_steps: int = 2*10**6
     training_steps: int = 100
-    seq_len: int = 50
-    batch_size: int = 50
+    seq_len: int = 20
+    batch_size: int = 128
     eval_freq: int = 20000
     buffer_size: int = 1000
-    burn_in: int = 0
 
     # task
     task: str = 'walker_stand'

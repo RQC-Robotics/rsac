@@ -5,10 +5,29 @@ F = nn.functional
 td = torch.distributions
 
 
+class TanhLayerNormEmbedding(nn.Module):
+    def __init__(self, *sizes, act=nn.ELU):
+        super().__init__()
+        self.emb = nn.Sequential(
+            build_mlp(*sizes, act=act),
+            nn.LayerNorm(sizes[-1]),
+            nn.Tanh()
+        )
+
+    def forward(self, x):
+        return self.emb(x)
+
+
 class Critic(nn.Module):
     def __init__(self, in_features, layers):
         super().__init__()
-        self.qs = nn.ModuleList([build_mlp(in_features, *layers, 1) for _ in range(2)])
+
+        def make_critic():
+            return nn.Sequential(
+                TanhLayerNormEmbedding(in_features, layers[0]),
+                build_mlp(*layers, 1)
+            )
+        self.qs = nn.ModuleList([make_critic() for _ in range(2)])
 
     def forward(self, obs, action):
         x = torch.cat([obs, action], -1)
@@ -20,7 +39,10 @@ class Actor(nn.Module):
     def __init__(self, in_features, out_features, layers, mean_scale=1, init_std=1.):
         super().__init__()
         self.mean_scale = mean_scale
-        self.mlp = build_mlp(in_features, *layers, 2*out_features)
+        self.mlp = nn.Sequential(
+            TanhLayerNormEmbedding(in_features, layers[0]),
+            build_mlp(*layers, 2*out_features)
+        )
         self.init_std = torch.log(torch.tensor(init_std).exp() - 1.)
 
     def forward(self, x):
@@ -37,24 +59,6 @@ class Actor(nn.Module):
         dist = td.transformed_distribution.TransformedDistribution(dist, td.TanhTransform(cache_size=1))
         dist = td.Independent(dist, 1)
         return dist
-
-
-class Embedding(nn.Module):
-    def __init__(self, *sizes, act=nn.ReLU):
-        super().__init__()
-        self.emb = nn.Sequential(
-            build_mlp(*sizes, act=act),
-            nn.LayerNorm(sizes[-1]),
-            nn.Tanh()
-        )
-
-    def forward(self, x):
-        return self.emb(x)
-
-
-class DummyEncoder(Embedding):
-    def forward(self, x):
-        return self.emb(x)
 
 
 class PointCloudDecoder(nn.Module):
@@ -122,7 +126,7 @@ class PointCloudEncoderGlobal(nn.Module):
             features_from_layers = (features_from_layers, )
         self.selected_layers = features_from_layers
         self.fc_size = sizes[-1] * (1 + sum([sizes[i] for i in self.selected_layers]))
-        self.fc = Embedding(self.fc_size, out_features)
+        self.fc = TanhLayerNormEmbedding(self.fc_size, out_features)
 
     def forward(self, x):
         features = [x]
@@ -147,20 +151,19 @@ class PointCloudEncoderGlobal(nn.Module):
 class PixelEncoder(nn.Module):
     def __init__(self, in_channels=3, out_features=64, depth=32, act=nn.ReLU):
         super().__init__()
-
         self.convs = nn.Sequential(
             nn.Conv2d(in_channels, depth, 3, 2),
             act(),
             nn.Conv2d(depth, depth, 3, 1),
             act(),
-            nn.Flatten(),
-            Embedding(depth*39*39, out_features)
-            # nn.Conv2d(depth, depth, 3, 1),
-            # act(),
-            # nn.Conv2d(depth, depth, 3, 1),
-            # act(),
             # nn.Flatten(),
-            # Embedding(depth*35*35, out_features)
+            # TanhLayerNormEmbedding(depth*39*39, out_features)
+            nn.Conv2d(depth, depth, 3, 1),
+            act(),
+            nn.Conv2d(depth, depth, 3, 1),
+            act(),
+            nn.Flatten(),
+            TanhLayerNormEmbedding(depth*35*35, out_features)
         )
 
     def forward(self, img):
@@ -174,10 +177,11 @@ class PixelEncoder(nn.Module):
 class PixelDecoder(nn.Module):
     def __init__(self, in_features, out_channels=3, depth=32, act=nn.ReLU):
         super().__init__()
+        dim = 35 # 39 - for two conv layers, 35 for 4 layers
         self.deconvs = nn.Sequential(
-            nn.Linear(in_features, depth*35*35),
+            nn.Linear(in_features, depth*dim**2),
             act(),
-            nn.Unflatten(-1, (depth, 35, 35)),
+            nn.Unflatten(-1, (depth, dim, dim)),
             nn.ConvTranspose2d(depth, depth, 3, 1),
             act(),
             nn.ConvTranspose2d(depth, depth, 3, 1),

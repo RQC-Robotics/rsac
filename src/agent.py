@@ -11,43 +11,26 @@ class RSAC(nn.Module):
     def __init__(self, env, config, callback):
         super().__init__()
         self.env = env
-        self.act_dim = env.action_spec().shape[0]
         self.callback = callback
         self._c = config
         self._step = 0
         self._build()
 
     @torch.no_grad()
-    def policy(self, obs, state, training):
-        if not torch.is_tensor(state):
-            state = torch.zeros((obs.size(0), self._c.hidden_dim), device=self.device)
-
+    def policy(self, obs, training):
         state = self._target_encoder(obs)
-        #state = self._target_cell(obs, state)
         dist = self._target_actor(state)
 
         if training:
             action = dist.sample()
         else:
             action = dist.sample([100]).mean(0)
-
         log_prob = dist.log_prob(action)
-        return action, log_prob, state
+        return action, log_prob
 
-    def step(self, obs, actions, rewards, log_probs, hidden_states):
-        # burn_in
-        init_hidden = hidden_states[0]
-        if self._c.burn_in > 0:
-            target_obs_emb = self._target_encoder(obs[:self._c.burn_in])
-            init_hidden = self.cell_roll(self._target_cell, target_obs_emb, init_hidden)[-1]
-            obs, actions, rewards, log_probs = map(lambda t: t[self._c.burn_in:], (obs, actions, rewards, log_probs))
-
-        obs_emb = self.encoder(obs)
-        target_obs_emb = self._target_encoder(obs)
-        # states = self.cell_roll(self.cell, obs_emb, init_hidden)
-        # target_states = self.cell_roll(self._target_cell, target_obs_emb, init_hidden)
-        states = obs_emb
-        target_states = target_obs_emb
+    def step(self, obs, actions, rewards, log_probs):
+        states = self.encoder(obs)
+        target_states = self._target_encoder(obs)
 
         alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -20.))
         alpha = F.softplus(alpha) + 1e-8
@@ -106,7 +89,7 @@ class RSAC(nn.Module):
         actions = dist.rsample([self._c.num_samples])
         log_prob = dist.log_prob(actions)
         # todo here it is possible to separate mean and std and learn them with different learning rates:
-        #   it could helps exploration
+        #   it can help exploration in exchange for more computations
         q_values = self._target_critic(
             torch.repeat_interleave(states[None], self._c.num_samples, 0),
             actions
@@ -123,7 +106,7 @@ class RSAC(nn.Module):
         return actor_loss.mean(), dual_loss
 
     def _auxiliary_loss(self, obs, actions, states_emb, target_states_emb):
-        # todo check l2 reg
+        # todo check l2 reg; introduce lagrange multipliers
         if self._c.aux_loss == 'None':
             return torch.tensor(0.)
         elif self._c.aux_loss == 'reconstruction':
@@ -166,52 +149,51 @@ class RSAC(nn.Module):
     def _build(self):
         # TODO: weight decay, value-function, make contrastive dimensions larger
         emb = self._c.obs_emb_dim
-        hidden = self._c.hidden_dim
-        obs_spec = env.observation_spec()
+        self.act_dim = self.env.action_spec().shape[0]
+        obs_spec = self.env.observation_spec()
         self.device = torch.device(self._c.device if torch.cuda.is_available() else 'cpu')
 
         # RL
-        self.cell = nn.GRUCell(emb, hidden)
-        self.actor = models.Actor(hidden, self.act_dim, layers=self._c.actor_layers,
+        self.actor = models.Actor(emb, self.act_dim, layers=self._c.actor_layers,
                                   mean_scale=self._c.mean_scale)
 
-        self.critic = models.Critic(hidden + self.act_dim, self._c.critic_layers)
+        self.critic = models.Critic(emb + self.act_dim, self._c.critic_layers)
 
         # SPR
-        self.dm = nn.GRUCell(self.act_dim, hidden)
-        self.projection = utils.build_mlp(hidden, emb, emb)
+        self.dm = nn.GRUCell(self.act_dim, emb)
+        self.projection = utils.build_mlp(emb, emb, emb)
         self.prediction = utils.build_mlp(emb, emb, emb)
         self.cos_sim = nn.CosineSimilarity(dim=-1)
 
         frames_stack, obs_dim, *_ = obs_spec.shape
         if self._c.observe == 'states':
-            self.encoder = models.DummyEncoder(obs_dim, emb)
-            self.decoder = nn.Linear(hidden, obs_dim)
+            encoder = models.TanhLayerNormEmbedding(obs_dim, emb)
+            decoder = nn.Linear(emb, obs_dim)
         elif self._c.observe in wrappers.PixelsWrapper.channels.keys():
-            self.encoder = models.PixelEncoder(obs_dim, emb)
-            self.decoder = models.PixelDecoder(hidden, obs_dim)
+            encoder = models.PixelEncoder(obs_dim, emb)
+            decoder = models.PixelDecoder(emb, obs_dim)
         elif self._c.observe == 'point_cloud':
-            self.encoder = models.PointCloudEncoderGlobal(3, emb, sizes=self._c.pn_layers,
-                                                          dropout=self._c.pn_dropout, features_from_layers=())
-            self.decoder = models.PointCloudDecoder(hidden, layers=self._c.pn_layers, pn_number=self._c.pn_number)
+            encoder = models.PointCloudEncoderGlobal(3, emb, sizes=self._c.pn_layers,
+                                                     dropout=self._c.pn_dropout, features_from_layers=())
+            decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers, pn_number=self._c.pn_number)
 
         self.encoder = nn.Sequential(
-            self.encoder,
+            encoder,
             nn.Flatten(-2),
-            models.Embedding(frames_stack * emb, emb)
+            models.TanhLayerNormEmbedding(frames_stack * emb, emb)
         )
         self.decoder = nn.Sequential(
-            models.Embedding(hidden, frames_stack * hidden),
-            nn.Unflatten(-1, (frames_stack, hidden)),
-            self.decoder
+            models.TanhLayerNormEmbedding(emb, frames_stack * emb),
+            nn.Unflatten(-1, (frames_stack, emb)),
+            decoder
         )
 
         self._log_alpha = nn.Parameter(torch.tensor(self._c.init_log_alpha))
 
-        self._target_encoder, self._target_actor, self._target_critic, self._target_cell, self._target_projection =\
-            utils.make_targets(self.encoder, self.actor, self.critic, self.cell, self.projection)
+        self._target_encoder, self._target_actor, self._target_critic, self._target_projection =\
+            utils.make_targets(self.encoder, self.actor, self.critic, self.projection)
 
-        self._rl_params = utils.make_param_group(self.cell, self.critic, self.actor)
+        self._rl_params = utils.make_param_group(self.critic, self.actor)
         self._ae_params = utils.make_param_group(self.encoder, self.dm, self.projection, self.prediction, self.decoder)
 
         self.optim = torch.optim.Adam([
@@ -226,7 +208,6 @@ class RSAC(nn.Module):
     def _update_targets(self):
         utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
         utils.soft_update(self._target_projection, self.projection, self._c.encoder_tau)
-        utils.soft_update(self._target_cell, self.cell, self._c.critic_tau)
         utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
         utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)
 
