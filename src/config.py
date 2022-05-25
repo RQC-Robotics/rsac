@@ -69,7 +69,7 @@ class Config(BaseConfig):
     batch_size: int = 50
     eval_freq: int = 20000
     buffer_size: int = 1000
-    burn_in: int = -1
+    burn_in: int = 0
 
     # task
     task: str = 'walker_stand'

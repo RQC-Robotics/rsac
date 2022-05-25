@@ -11,7 +11,7 @@ F = nn.functional
 td = torch.distributions
 
 
-def build_mlp(*sizes, act=nn.ELU):
+def build_mlp(*sizes, act=nn.ReLU):
     mlp = []
     for i in range(1, len(sizes)):
         mlp.append(nn.Linear(sizes[i-1], sizes[i]))

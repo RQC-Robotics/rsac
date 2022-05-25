@@ -40,7 +40,7 @@ class Actor(nn.Module):
 
 
 class Embedding(nn.Module):
-    def __init__(self, *sizes, act=nn.ELU):
+    def __init__(self, *sizes, act=nn.ReLU):
         super().__init__()
         self.emb = nn.Sequential(
             build_mlp(*sizes, act=act),
@@ -58,7 +58,7 @@ class DummyEncoder(Embedding):
 
 
 class PointCloudDecoder(nn.Module):
-    def __init__(self, in_features, pn_number, layers, act=nn.ELU):
+    def __init__(self, in_features, pn_number, layers, act=nn.ReLU):
         super().__init__()
 
         layers = layers + (3,)
@@ -78,7 +78,7 @@ class PointCloudDecoder(nn.Module):
 
 
 class PointCloudEncoder(nn.Module):
-    def __init__(self, in_features, out_features, layers, dropout=0., act=nn.ELU):
+    def __init__(self, in_features, out_features, layers, dropout=0., act=nn.ReLU):
         super().__init__()
         self.convs = nn.Sequential()
 
@@ -105,7 +105,7 @@ class PointCloudEncoder(nn.Module):
 
 class PointCloudEncoderGlobal(nn.Module):
     """The same encoder but with an option to process global features of selected points."""
-    def __init__(self, in_features, out_features, sizes, dropout=0., act=nn.ELU, features_from_layers=(0,)):
+    def __init__(self, in_features, out_features, sizes, dropout=0., act=nn.ReLU, features_from_layers=(0,)):
         super().__init__()
 
         sizes = (in_features,) + sizes
@@ -145,7 +145,7 @@ class PointCloudEncoderGlobal(nn.Module):
 
 
 class PixelEncoder(nn.Module):
-    def __init__(self, in_channels=3, out_features=64, depth=32, act=nn.ELU):
+    def __init__(self, in_channels=3, out_features=64, depth=32, act=nn.ReLU):
         super().__init__()
 
         self.convs = nn.Sequential(
@@ -153,12 +153,14 @@ class PixelEncoder(nn.Module):
             act(),
             nn.Conv2d(depth, depth, 3, 1),
             act(),
-            nn.Conv2d(depth, depth, 3, 1),
-            act(),
-            nn.Conv2d(depth, depth, 3, 1),
-            act(),
             nn.Flatten(),
-            Embedding(depth*35*35, out_features)
+            Embedding(depth*39*39, out_features)
+            # nn.Conv2d(depth, depth, 3, 1),
+            # act(),
+            # nn.Conv2d(depth, depth, 3, 1),
+            # act(),
+            # nn.Flatten(),
+            # Embedding(depth*35*35, out_features)
         )
 
     def forward(self, img):
@@ -170,7 +172,7 @@ class PixelEncoder(nn.Module):
 
 
 class PixelDecoder(nn.Module):
-    def __init__(self, in_features, out_channels=3, depth=32, act=nn.ELU):
+    def __init__(self, in_features, out_channels=3, depth=32, act=nn.ReLU):
         super().__init__()
         self.deconvs = nn.Sequential(
             nn.Linear(in_features, depth*35*35),

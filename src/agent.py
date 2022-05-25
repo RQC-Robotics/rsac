@@ -11,7 +11,6 @@ class RSAC(nn.Module):
     def __init__(self, env, config, callback):
         super().__init__()
         self.env = env
-        self.obs_spec = env.observation_spec()
         self.act_dim = env.action_spec().shape[0]
         self.callback = callback
         self._c = config
@@ -23,14 +22,14 @@ class RSAC(nn.Module):
         if not torch.is_tensor(state):
             state = torch.zeros((obs.size(0), self._c.hidden_dim), device=self.device)
 
-        obs = self._target_encoder(obs)
+        state = self._target_encoder(obs)
         #state = self._target_cell(obs, state)
-        dist = self._target_actor(obs)
+        dist = self._target_actor(state)
 
         if training:
             action = dist.sample()
         else:
-            action = dist.sample([1000]).mean(0)
+            action = dist.sample([100]).mean(0)
 
         log_prob = dist.log_prob(action)
         return action, log_prob, state
@@ -168,7 +167,9 @@ class RSAC(nn.Module):
         # TODO: weight decay, value-function, make contrastive dimensions larger
         emb = self._c.obs_emb_dim
         hidden = self._c.hidden_dim
+        obs_spec = env.observation_spec()
         self.device = torch.device(self._c.device if torch.cuda.is_available() else 'cpu')
+
         # RL
         self.cell = nn.GRUCell(emb, hidden)
         self.actor = models.Actor(hidden, self.act_dim, layers=self._c.actor_layers,
@@ -182,7 +183,7 @@ class RSAC(nn.Module):
         self.prediction = utils.build_mlp(emb, emb, emb)
         self.cos_sim = nn.CosineSimilarity(dim=-1)
 
-        frames_stack, obs_dim, *_ = self.obs_spec.shape
+        frames_stack, obs_dim, *_ = obs_spec.shape
         if self._c.observe == 'states':
             self.encoder = models.DummyEncoder(obs_dim, emb)
             self.decoder = nn.Linear(hidden, obs_dim)
