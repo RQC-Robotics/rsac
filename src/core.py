@@ -65,7 +65,7 @@ class RLAlg:
     @classmethod
     def load(cls, path, **kwargs):
         path = pathlib.Path(path)
-        [f.unlink() for f in path.iterdir() if f.match('*tfevents*')]
+        #[f.unlink() for f in path.iterdir() if f.match('*tfevents*')]
         config = Config.load(path / 'config.yml', **kwargs)
         alg = cls(config)
 

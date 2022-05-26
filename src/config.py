@@ -34,12 +34,12 @@ class Config(BaseConfig):
     # algo
     discount: float = .99
     disclam: float = 1.
-    num_samples: int = 16
+    num_samples: int = 8
     action_repeat: int = 2
     frames_stack: int = 3
     spr_coef: float = 2.
     spr_depth: int = 5
-    init_log_alpha: float = -2.
+    init_log_alpha: float = -3.
 
     # architecture
     critic_layers: tuple = (256, 256)
@@ -49,7 +49,7 @@ class Config(BaseConfig):
 
     # PointNet
     pn_number: int = 600
-    pn_layers: tuple = (64, 128, 256)
+    pn_layers: tuple = (128, 128, 128)
     pn_dropout: float = 0.
 
     # train

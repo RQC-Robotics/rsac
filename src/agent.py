@@ -177,6 +177,8 @@ class RSAC(nn.Module):
             encoder = models.PointCloudEncoderGlobal(3, emb, sizes=self._c.pn_layers,
                                                      dropout=self._c.pn_dropout, features_from_layers=())
             decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers, pn_number=self._c.pn_number)
+        else:
+            raise NotImplementedError
 
         self.encoder = nn.Sequential(
             encoder,
