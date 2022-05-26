@@ -52,7 +52,6 @@ class RSAC(nn.Module):
             self.callback.add_scalar('train/actor_grads', utils.grads_sum(self.actor), self._step)
             self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
             self.callback.add_scalar('train/encoder_grads', utils.grads_sum(self.encoder), self._step)
-            self.callback.add_scalar('train/cell_grads', utils.grads_sum(self.cell), self._step)
         self._update_targets()
         self._step += 1
 

@@ -23,7 +23,7 @@ class TanhLayerNormMLP(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             TanhLayerNormEmbedding(sizes[0], sizes[1]),
-            utils.build_mlp(*sizes[1:], act=act)
+            build_mlp(*sizes[1:], act=act)
         )
 
     def forward(self, inp):
