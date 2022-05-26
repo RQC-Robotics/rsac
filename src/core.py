@@ -28,7 +28,7 @@ class RLAlg:
             self.interactions_count += 1000
 
         # prefill
-        [update_buffer() for _ in range(20)]
+        [update_buffer() for _ in range(10)]
 
         while self.interactions_count < self.config.total_steps:
             update_buffer()

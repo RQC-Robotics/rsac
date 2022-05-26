@@ -12,31 +12,21 @@ class PCA(nn.Module):
     def __init__(self, alg, lr=1e-3):
         super().__init__()
         self.alg = alg
-        self.head = nn.Linear(alg.config.hidden_dim, len(alg.env.physics.state())).to(alg.agent.device)
-        self.optim = torch.optim.SGD(self.head.parameters(), lr=lr)
+        self.head = nn.Linear(alg.config.obs_emb_dim, len(alg.env.physics.state())).to(alg.agent.device)
+        self.optim = torch.optim.Adam(self.head.parameters(), lr=lr)
 
-    def observe(self, obs, hidden):
+    def observe(self, obs):
         with torch.no_grad():
-            obs, _ = self.alg.agent.encoder(obs)
-            hidden = self.alg.agent.cell(obs, hidden)
-        return self.head(hidden), hidden
+            obs_emb = self.alg.agent.encoder(obs)
+        return self.head(obs_emb)
 
     def learn(self, observations, states):
-        states_pred = self(observations)
+        states_pred = self.observe(observations)
         loss = (states_pred - states).pow(2).mean()
         self.optim.zero_grad()
         loss.backward()
         self.optim.step()
         return loss.item()
-
-    def forward(self, observations, hidden=None):
-        if not torch.is_tensor(hidden):
-            hidden = torch.zeros(observations.size(1), self.alg.config.hidden_dim, device=self.alg.agent.device)
-        states_pred = []
-        for obs in observations:
-            state, hidden = self.observe(obs, hidden)
-            states_pred.append(state)
-        return torch.stack(states_pred)
 
 
 def parse_args():
@@ -49,11 +39,7 @@ def parse_args():
 
 
 def train_pca(path, lr, epochs, batch_size):
-    path = pathlib.Path(path)
-    config = Config()
-    config = config.load(path / 'config.yml')
-    alg = RLAlg(config)
-    alg.load(path)
+    alg = RLAlg.load(path)
     pca = PCA(alg, lr)
     monitor = wrappers.Monitor(alg.env)
 
