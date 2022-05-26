@@ -16,18 +16,24 @@ class TanhLayerNormEmbedding(nn.Module):
 
     def forward(self, x):
         return self.emb(x)
+    
+    
+class TanhLayerNormMLP(nn.Module):
+    def __init__(self, *sizes, act=nn.ReLU):
+        super().__init__()
+        self.net = nn.Sequential(
+            TanhLayerNormEmbedding(sizes[0], sizes[1]),
+            utils.build_mlp(*sizes[1:], act=act)
+        )
+
+    def forward(self, inp):
+        return self.net(inp)
 
 
 class Critic(nn.Module):
     def __init__(self, in_features, layers):
         super().__init__()
-
-        def make_critic():
-            return nn.Sequential(
-                TanhLayerNormEmbedding(in_features, layers[0]),
-                build_mlp(*layers, 1)
-            )
-        self.qs = nn.ModuleList([make_critic() for _ in range(2)])
+        self.qs = nn.ModuleList([TanhLayerNormMLP(in_features, *layers, 1) for _ in range(2)])
 
     def forward(self, obs, action):
         x = torch.cat([obs, action], -1)
@@ -39,10 +45,7 @@ class Actor(nn.Module):
     def __init__(self, in_features, out_features, layers, mean_scale=1, init_std=1.):
         super().__init__()
         self.mean_scale = mean_scale
-        self.mlp = nn.Sequential(
-            TanhLayerNormEmbedding(in_features, layers[0]),
-            build_mlp(*layers, 2*out_features)
-        )
+        self.mlp = TanhLayerNormMLP(in_features, *layers, 2*out_features)
         self.init_std = torch.log(torch.tensor(init_std).exp() - 1.)
 
     def forward(self, x):
