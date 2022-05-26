@@ -59,8 +59,8 @@ class RLAlg:
             'params': self.agent.state_dict(),
             'optim': self.agent.optim.state_dict(),
         }, self._task_path / 'checkpoint')
-        with open(self._task_path / 'buffer', 'wb') as buffer:
-            pickle.dump(self.buffer, buffer)
+        # with open(self._task_path / 'buffer', 'wb') as buffer:
+        #     pickle.dump(self.buffer, buffer)
 
     @classmethod
     def load(cls, path, **kwargs):

@@ -63,7 +63,7 @@ def simulate(env, policy, training):
         tr[k] = np.stack(v)
     return tr
 
-
+# TODO: compressed save
 class TrajectoryBuffer(Dataset):
     def __init__(self, capacity, seq_len):
         self._data = deque(maxlen=capacity)
