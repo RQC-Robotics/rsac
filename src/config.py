@@ -39,7 +39,7 @@ class Config(BaseConfig):
     frames_stack: int = 3
     spr_coef: float = 2.
     spr_depth: int = 5
-    init_log_alpha: float = -3.
+    init_log_alpha: float = -2.
 
     # architecture
     critic_layers: tuple = (256, 256)
@@ -48,8 +48,8 @@ class Config(BaseConfig):
     mean_scale: float = 5.
 
     # PointNet
-    pn_number: int = 600
-    pn_layers: tuple = (128, 128, 128)
+    pn_number: int = 500
+    pn_layers: tuple = (256, 128, 64)
     pn_dropout: float = 0.
 
     # train
@@ -63,7 +63,7 @@ class Config(BaseConfig):
     max_grad: float = 100.
 
     total_steps: int = 2*10**6
-    training_steps: int = 25
+    training_steps: int = 100
     seq_len: int = 20
     batch_size: int = 64
     eval_freq: int = 20000

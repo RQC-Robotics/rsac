@@ -59,7 +59,7 @@ class Actor(nn.Module):
     @staticmethod
     def get_dist(mu, std):
         dist = td.Normal(mu, std)
-        dist = td.transformed_distribution.TransformedDistribution(dist, td.TanhTransform(cache_size=1))
+        dist = td.transformed_distribution.TransformedDistribution(dist, TanhTransform())
         dist = td.Independent(dist, 1)
         return dist
 

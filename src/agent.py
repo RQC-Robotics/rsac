@@ -79,10 +79,10 @@ class RSAC(nn.Module):
         loss = self._sequence_discount(loss)*loss
 
         if self._c.debug:
-            self.callback.add_scalar('train/mean_reward', rewards.mean() / self._c.action_repeat, self._step)
-            self.callback.add_scalar('train/mean_value', q_values.mean(), self._step)
-            self.callback.add_scalar('train/retrace_weight', cs.mean(), self._step)
-            self.callback.add_scalar('train/mean_deltas', deltas.mean(), self._step)
+            self.callback.add_scalar('train/mean_reward', rewards.detach().mean() / self._c.action_repeat, self._step)
+            self.callback.add_scalar('train/mean_value', q_values.detach().mean(), self._step)
+            self.callback.add_scalar('train/retrace_weight', cs.detach().mean(), self._step)
+            self.callback.add_scalar('train/mean_deltas', deltas.detach().mean(), self._step)
         return loss.mean()
 
     def _policy_improvement(self, states, alpha):
@@ -210,7 +210,7 @@ class RSAC(nn.Module):
     @torch.no_grad()
     def _update_targets(self):
         utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
-        utils.soft_update(self._target_projection, self.projection, self._c.encoder_tau)
+        # utils.soft_update(self._target_projection, self.projection, self._c.encoder_tau)
         utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
         utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)
 
