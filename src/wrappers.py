@@ -168,6 +168,7 @@ class PointCloudWrapper(Wrapper):
     def __init__(self, env, pn_number=1000, render_kwargs=None, static_camera=True, as_pixels=False):
         super().__init__(env)
         self.render_kwargs = render_kwargs or dict(camera_id=0, height=240, width=320)
+        assert all(map(lambda k: k in self.render_kwargs, ('camera_id', 'height', 'width')))
         self.pn_number = pn_number
 
         self.scene_option = wrapper.MjvOption()
@@ -176,8 +177,7 @@ class PointCloudWrapper(Wrapper):
         self.static_camera = static_camera
         self.as_pixels = as_pixels
         self._partial_sum = None
-        if static_camera:
-            self._inverse_matrix = self.inverse_matrix()
+        self._inverse_matrix = self.inverse_matrix() if static_camera else None
 
     def observation(self, timestamp):
         depth_map = self.physics.render(depth=True, **self.render_kwargs, scene_option=self.scene_option)
@@ -205,9 +205,7 @@ class PointCloudWrapper(Wrapper):
             [0, f_inv, -f_inv*cy],
             [0, 0, 1.]
         ])
-        #ignoring rotation for now
-        return inv_mat
-        return rotation@inv_mat
+        return rotation.T@inv_mat
 
     def _segmentation_mask(self):
         seg = self.physics.render(segmentation=True, **self.render_kwargs, scene_option=self.scene_option)
@@ -229,7 +227,7 @@ class PointCloudWrapper(Wrapper):
         if not self.static_camera or self._partial_sum is None:
             width = self.render_kwargs.get('width', 320)
             height = self.render_kwargs.get('height', 240)
-            grid = 1 + np.mgrid[:height, :width]
+            grid = 1. + np.mgrid[:height, :width]
             self._partial_sum = dot_product(inv_mat[:, :-1], grid)
 
         residual_sum = dot_product(inv_mat[:, -1:], depth_map[np.newaxis])
@@ -238,7 +236,7 @@ class PointCloudWrapper(Wrapper):
     def _mask(self, point_cloud):
         """ Heuristic to cut outliers """
         threshold = np.quantile(point_cloud[..., 2], .99)
-        return point_cloud[..., 2] < min(threshold, 10)
+        return point_cloud[..., 2] < 10.
 
     def observation_spec(self):
         return specs.Array(shape=(self.pn_number, 3), dtype=np.float32, name='point_cloud')

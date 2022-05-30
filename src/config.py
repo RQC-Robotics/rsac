@@ -49,7 +49,7 @@ class Config(BaseConfig):
 
     # PointNet
     pn_number: int = 500
-    pn_layers: tuple = (256, 128, 64)
+    pn_layers: tuple = (256, 128, 128)
     pn_dropout: float = 0.
 
     # train
