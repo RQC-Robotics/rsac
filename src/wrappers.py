@@ -205,6 +205,8 @@ class PointCloudWrapper(Wrapper):
             [0, f_inv, -f_inv*cy],
             [0, 0, 1.]
         ])
+        #ignoring rotation for now
+        return inv_mat
         return rotation@inv_mat
 
     def _segmentation_mask(self):
@@ -236,7 +238,7 @@ class PointCloudWrapper(Wrapper):
     def _mask(self, point_cloud):
         """ Heuristic to cut outliers """
         threshold = np.quantile(point_cloud[..., 2], .99)
-        return point_cloud[..., 2] < max(threshold, 10)
+        return point_cloud[..., 2] < min(threshold, 10)
 
     def observation_spec(self):
         return specs.Array(shape=(self.pn_number, 3), dtype=np.float32, name='point_cloud')
