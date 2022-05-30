@@ -231,7 +231,7 @@ class PointCloudWrapper(Wrapper):
             self._partial_sum = dot_product(inv_mat[:, :-1], grid)
 
         residual_sum = dot_product(inv_mat[:, -1:], depth_map[np.newaxis])
-        return self._partial_sum + residual_sum + self.physics.data.cam_xpos[cam_id]
+        return self._partial_sum + residual_sum# + self.physics.data.cam_xpos[cam_id]
 
     def _mask(self, point_cloud):
         """ Heuristic to cut outliers """
