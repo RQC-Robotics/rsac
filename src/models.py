@@ -85,7 +85,7 @@ class PointCloudDecoder(nn.Module):
         return self.deconvs(x)
 
 
-class PointCloudEncoderGlobal(nn.Module):
+class PointCloudEncoder(nn.Module):
     """PointNet with an option to process global features of selected points."""
     def __init__(self, in_features, out_features, layers, act=nn.ReLU, features_from_layers=(0,)):
         super().__init__()
@@ -126,7 +126,7 @@ class PointCloudEncoderGlobal(nn.Module):
         return torch.gather(features, -2, indices)
 
 
-class PixelEncoder(nn.Module):
+class PixelsEncoder(nn.Module):
     def __init__(self, in_channels=3, out_features=64, depth=32, act=nn.ReLU):
         super().__init__()
         self.convs = nn.Sequential(
@@ -134,14 +134,14 @@ class PixelEncoder(nn.Module):
             act(),
             nn.Conv2d(depth, depth, 3, 1),
             act(),
-            # nn.Flatten(),
-            # LayerNormTanhEmbedding(depth*39*39, out_features)
-            nn.Conv2d(depth, depth, 3, 1),
-            act(),
-            nn.Conv2d(depth, depth, 3, 1),
-            act(),
             nn.Flatten(),
-            LayerNormTanhEmbedding(depth*35*35, out_features)
+            LayerNormTanhEmbedding(depth*39*39, out_features)
+            # nn.Conv2d(depth, depth, 3, 1),
+            # act(),
+            # nn.Conv2d(depth, depth, 3, 1),
+            # act(),
+            # nn.Flatten(),
+            # LayerNormTanhEmbedding(depth*35*35, out_features)
         )
 
     def forward(self, img):
@@ -152,20 +152,20 @@ class PixelEncoder(nn.Module):
         return img
 
 
-class PixelDecoder(nn.Module):
+class PixelsDecoder(nn.Module):
     def __init__(self, in_features, out_channels=3, depth=32, act=nn.ReLU):
         super().__init__()
-        dim = 35 # 39 - for two conv layers, 35 for 4 layers
+        dim = 39 # 39 - for two conv layers, 35 for 4 layers
         self.deconvs = nn.Sequential(
             nn.Linear(in_features, depth*dim**2),
             act(),
             nn.Unflatten(-1, (depth, dim, dim)),
             nn.ConvTranspose2d(depth, depth, 3, 1),
             act(),
-            nn.ConvTranspose2d(depth, depth, 3, 1),
-            act(),
-            nn.ConvTranspose2d(depth, depth, 3, 1),
-            act(),
+            # nn.ConvTranspose2d(depth, depth, 3, 1),
+            # act(),
+            # nn.ConvTranspose2d(depth, depth, 3, 1),
+            # act(),
             nn.ConvTranspose2d(depth, out_channels, 3, 2, output_padding=1),
         )
 

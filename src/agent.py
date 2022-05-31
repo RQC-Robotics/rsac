@@ -171,11 +171,10 @@ class RSAC(nn.Module):
             encoder = models.LayerNormTanhEmbedding(obs_dim, emb)
             decoder = nn.Linear(emb, obs_dim)
         elif self._c.observe in wrappers.PixelsWrapper.channels.keys():
-            encoder = models.PixelEncoder(obs_dim, emb)
-            decoder = models.PixelDecoder(emb, obs_dim)
+            encoder = models.PixelsEncoder(obs_dim, emb)
+            decoder = models.PixelsDecoder(emb, obs_dim)
         elif self._c.observe == 'point_cloud':
-            encoder = models.PointCloudEncoderGlobal(3, emb, layers=self._c.pn_layers,
-                                                     dropout=self._c.pn_dropout, features_from_layers=())
+            encoder = models.PointCloudEncoder(3, emb, layers=self._c.pn_layers, features_from_layers=())
             decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers, pn_number=self._c.pn_number)
         else:
             raise NotImplementedError

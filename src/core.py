@@ -59,6 +59,7 @@ class RLAlg:
             'params': self.agent.state_dict(),
             'optim': self.agent.optim.state_dict(),
         }, self._task_path / 'checkpoint')
+        # TODO: restore buffer saving
         # with open(self._task_path / 'buffer', 'wb') as buffer:
         #     pickle.dump(self.buffer, buffer)
 
