@@ -48,7 +48,7 @@ class Config(BaseConfig):
     mean_scale: float = 5.
 
     # PointNet
-    pn_number: int = 800
+    pn_number: int = 600
     pn_layers: tuple = (64, 128, 256)
 
     # train
