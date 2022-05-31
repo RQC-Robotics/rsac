@@ -43,14 +43,13 @@ class Config(BaseConfig):
 
     # architecture
     critic_layers: tuple = (256, 256)
-    actor_layers: tuple = (400, 300)
+    actor_layers: tuple = (256, 256)
     obs_emb_dim: int = 64
     mean_scale: float = 5.
 
     # PointNet
-    pn_number: int = 600
+    pn_number: int = 800
     pn_layers: tuple = (256, 128, 64)
-    pn_dropout: float = 0.
 
     # train
     rl_lr: float = 3e-4
@@ -60,12 +59,12 @@ class Config(BaseConfig):
     critic_tau: float = .995
     actor_tau: float = .995
     encoder_tau: float = .995
-    max_grad: float = 100.
+    max_grad: float = 200.
 
     total_steps: int = 2*10**6
-    training_steps: int = 200
-    seq_len: int = 20
-    batch_size: int = 64
+    training_steps: int = 100
+    seq_len: int = 30
+    batch_size: int = 96
     eval_freq: int = 20000
     buffer_size: int = 1000
 

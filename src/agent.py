@@ -168,13 +168,13 @@ class RSAC(nn.Module):
 
         frames_stack, obs_dim, *_ = obs_spec.shape
         if self._c.observe == 'states':
-            encoder = models.TanhLayerNormEmbedding(obs_dim, emb)
+            encoder = models.LayerNormTanhEmbedding(obs_dim, emb)
             decoder = nn.Linear(emb, obs_dim)
         elif self._c.observe in wrappers.PixelsWrapper.channels.keys():
             encoder = models.PixelEncoder(obs_dim, emb)
             decoder = models.PixelDecoder(emb, obs_dim)
         elif self._c.observe == 'point_cloud':
-            encoder = models.PointCloudEncoderGlobal(3, emb, sizes=self._c.pn_layers,
+            encoder = models.PointCloudEncoderGlobal(3, emb, layers=self._c.pn_layers,
                                                      dropout=self._c.pn_dropout, features_from_layers=())
             decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers, pn_number=self._c.pn_number)
         else:
@@ -183,10 +183,10 @@ class RSAC(nn.Module):
         self.encoder = nn.Sequential(
             encoder,
             nn.Flatten(-2),
-            models.TanhLayerNormEmbedding(frames_stack * emb, emb)
+            models.LayerNormTanhEmbedding(frames_stack * emb, emb)
         )
         self.decoder = nn.Sequential(
-            models.TanhLayerNormEmbedding(emb, frames_stack * emb),
+            nn.Linear(emb, frames_stack * emb),
             nn.Unflatten(-1, (frames_stack, emb)),
             decoder
         )

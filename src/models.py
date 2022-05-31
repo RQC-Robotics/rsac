@@ -1,16 +1,17 @@
 import torch
-from .utils import build_mlp, TanhTransform
+from .utils import build_mlp, TruncatedTanhTransform
 nn = torch.nn
 F = nn.functional
 td = torch.distributions
 
 
-class TanhLayerNormEmbedding(nn.Module):
-    def __init__(self, *sizes, act=nn.ELU):
+class LayerNormTanhEmbedding(nn.Module):
+    """MLP embedded with LayerNorm (applied to the last dim) and tanh."""
+    def __init__(self, *layers, act=nn.ELU):
         super().__init__()
         self.emb = nn.Sequential(
-            build_mlp(*sizes, act=act),
-            nn.LayerNorm(sizes[-1]),
+            build_mlp(*layers, act=act),
+            nn.LayerNorm(layers[-1]),
             nn.Tanh()
         )
 
@@ -18,22 +19,23 @@ class TanhLayerNormEmbedding(nn.Module):
         return self.emb(x)
     
     
-class TanhLayerNormMLP(nn.Module):
-    def __init__(self, *sizes, act=nn.ReLU):
-        super().__init__()
-        self.net = nn.Sequential(
-            TanhLayerNormEmbedding(sizes[0], sizes[1]),
-            build_mlp(*sizes[1:], act=act)
-        )
-
-    def forward(self, inp):
-        return self.net(inp)
+# class LayerNormTanhMLP(nn.Module):
+#     """One layer LayerNormTanhEmbedding before MLP."""
+#     def __init__(self, *layers, act=nn.ReLU):
+#         super().__init__()
+#         self.net = nn.Sequential(
+#             LayerNormTanhEmbedding(layers[0], layers[1]),
+#             build_mlp(*layers[1:], act=act)
+#         )
+#
+#     def forward(self, inp):
+#         return self.net(inp)
 
 
 class Critic(nn.Module):
     def __init__(self, in_features, layers):
         super().__init__()
-        self.qs = nn.ModuleList([TanhLayerNormMLP(in_features, *layers, 1) for _ in range(2)])
+        self.qs = nn.ModuleList([build_mlp(in_features, *layers, 1) for _ in range(2)])
 
     def forward(self, obs, action):
         x = torch.cat([obs, action], -1)
@@ -45,7 +47,7 @@ class Actor(nn.Module):
     def __init__(self, in_features, out_features, layers, mean_scale=1, init_std=1.):
         super().__init__()
         self.mean_scale = mean_scale
-        self.mlp = TanhLayerNormMLP(in_features, *layers, 2*out_features)
+        self.mlp = build_mlp(in_features, *layers, 2*out_features)
         self.init_std = torch.log(torch.tensor(init_std).exp() - 1.)
 
     def forward(self, x):
@@ -59,9 +61,8 @@ class Actor(nn.Module):
     @staticmethod
     def get_dist(mu, std):
         dist = td.Normal(mu, std)
-        dist = td.transformed_distribution.TransformedDistribution(dist, TanhTransform())
-        dist = td.Independent(dist, 1)
-        return dist
+        dist = td.transformed_distribution.TransformedDistribution(dist, TruncatedTanhTransform())
+        return td.Independent(dist, 1)
 
 
 class PointCloudDecoder(nn.Module):
@@ -84,52 +85,26 @@ class PointCloudDecoder(nn.Module):
         return self.deconvs(x)
 
 
-class PointCloudEncoder(nn.Module):
-    def __init__(self, in_features, out_features, layers, dropout=0., act=nn.ReLU):
-        super().__init__()
-        self.convs = nn.Sequential()
-
-        sizes = (in_features,) + layers
-        for i in range(len(sizes)-1):
-            block = nn.Sequential(
-                nn.Linear(sizes[i], sizes[i+1]),
-                act(),
-                nn.Dropout(dropout)
-            )
-            self.convs.add_module(f'conv{i}', block)
-
-        self.fc = nn.Sequential(
-            nn.Linear(sizes[-1], out_features),
-            nn.LayerNorm(out_features),
-            nn.Tanh()
-        )
-
-    def forward(self, x):
-        x = self.convs(x)
-        values, indices = torch.max(x, -2)
-        return self.fc(values)
-
-
 class PointCloudEncoderGlobal(nn.Module):
-    """The same encoder but with an option to process global features of selected points."""
-    def __init__(self, in_features, out_features, sizes, dropout=0., act=nn.ReLU, features_from_layers=(0,)):
+    """PointNet with an option to process global features of selected points."""
+    def __init__(self, in_features, out_features, layers, act=nn.ReLU, features_from_layers=(0,)):
         super().__init__()
 
-        sizes = (in_features,) + sizes
+        layers = (in_features,) + layers
         self.layers = nn.ModuleList()
-        for i in range(len(sizes) - 1):
+        for i in range(len(layers) - 1):
             block = nn.Sequential(
-                nn.Linear(sizes[i], sizes[i + 1]),
+                nn.Linear(layers[i], layers[i + 1]),
                 act(),
-                nn.Dropout(dropout)
             )
             self.layers.append(block)
 
         if isinstance(features_from_layers, int):
             features_from_layers = (features_from_layers, )
         self.selected_layers = features_from_layers
-        self.fc_size = sizes[-1] * (1 + sum([sizes[i] for i in self.selected_layers]))
-        self.fc = TanhLayerNormEmbedding(self.fc_size, out_features)
+        
+        self.fc_size = layers[-1] * (1 + sum([layers[i] for i in self.selected_layers]))
+        self.fc = LayerNormTanhEmbedding(self.fc_size, out_features)
 
     def forward(self, x):
         features = [x]
@@ -160,13 +135,13 @@ class PixelEncoder(nn.Module):
             nn.Conv2d(depth, depth, 3, 1),
             act(),
             # nn.Flatten(),
-            # TanhLayerNormEmbedding(depth*39*39, out_features)
+            # LayerNormTanhEmbedding(depth*39*39, out_features)
             nn.Conv2d(depth, depth, 3, 1),
             act(),
             nn.Conv2d(depth, depth, 3, 1),
             act(),
             nn.Flatten(),
-            TanhLayerNormEmbedding(depth*35*35, out_features)
+            LayerNormTanhEmbedding(depth*35*35, out_features)
         )
 
     def forward(self, img):
