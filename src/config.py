@@ -49,7 +49,7 @@ class Config(BaseConfig):
 
     # PointNet
     pn_number: int = 800
-    pn_layers: tuple = (256, 128, 64)
+    pn_layers: tuple = (64, 128, 256)
 
     # train
     rl_lr: float = 3e-4
@@ -62,9 +62,9 @@ class Config(BaseConfig):
     max_grad: float = 200.
 
     total_steps: int = 2*10**6
-    training_steps: int = 100
-    seq_len: int = 30
-    batch_size: int = 96
+    training_steps: int = 250
+    seq_len: int = 16
+    batch_size: int = 64
     eval_freq: int = 20000
     buffer_size: int = 1000
 
