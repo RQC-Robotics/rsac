@@ -90,7 +90,7 @@ class RLAlg:
         elif self.config.observe in wrappers.PixelsWrapper.channels.keys():
             env = wrappers.PixelsWrapper(env, mode=self.config.observe)
         elif self.config.observe == 'point_cloud':
-            env = wrappers.PointCloudWrapper(env, pn_number=self.config.pn_number, static_camera=False)
+            env = wrappers.PointCloudWrapper(env, pn_number=self.config.pn_number, downsample=2)
         else:
             raise NotImplementedError
         env = wrappers.ActionRepeat(env, self.config.action_repeat)

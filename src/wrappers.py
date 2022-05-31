@@ -165,7 +165,7 @@ class PixelsWrapper(Wrapper):
 
 
 class PointCloudWrapper(Wrapper):
-    def __init__(self, env, pn_number=1000, render_kwargs=None, static_camera=True, as_pixels=False):
+    def __init__(self, env, pn_number=1000, render_kwargs=None, static_camera=False, as_pixels=False, downsample=1):
         super().__init__(env)
         self.render_kwargs = render_kwargs or dict(camera_id=0, height=240, width=320)
         assert all(map(lambda k: k in self.render_kwargs, ('camera_id', 'height', 'width')))
@@ -176,6 +176,7 @@ class PointCloudWrapper(Wrapper):
 
         self.static_camera = static_camera
         self.as_pixels = as_pixels
+        self.downsample = downsample
         self._partial_sum = None
         self._inverse_matrix = self.inverse_matrix() if static_camera else None
 
@@ -186,10 +187,11 @@ class PointCloudWrapper(Wrapper):
             # TODO: decide if segmentation or another mask is needed
             return point_cloud
         point_cloud = np.reshape(point_cloud, (-1, 3))
+
         segmentation_mask = self._segmentation_mask()
         # TODO: fix orientation so mask can be used
         mask = self._mask(point_cloud)  # additional mask if needed
-        selected_points = point_cloud[segmentation_mask & mask]
+        selected_points = point_cloud[segmentation_mask & mask][::self.downsample]
         return self._to_fixed_number(selected_points).astype(np.float32)
 
     def inverse_matrix(self):
