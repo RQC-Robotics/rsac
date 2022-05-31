@@ -1,7 +1,7 @@
 import torch
-from . import models, utils, wrappers
 from torch.nn.utils import clip_grad_norm_
 from pytorch3d.loss import chamfer_distance
+from . import models, utils, wrappers
 td = torch.distributions
 nn = torch.nn
 F = nn.functional
@@ -35,7 +35,8 @@ class RSAC(nn.Module):
         alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -20.))
         alpha = F.softplus(alpha) + 1e-8
 
-        rl_loss = self._policy_learning(states, actions, rewards, log_probs, target_states, alpha.detach())
+        rl_loss = self._policy_learning(states, actions, rewards, log_probs,
+                                        target_states, alpha.detach())
         auxiliary_loss = self._auxiliary_loss(obs, actions, states, target_states)
         actor_loss, dual_loss = self._policy_improvement(target_states, alpha)
         model_loss = rl_loss + auxiliary_loss + actor_loss + dual_loss
@@ -51,7 +52,9 @@ class RSAC(nn.Module):
             self.callback.add_scalar('train/critic_loss', rl_loss, self._step)
             self.callback.add_scalar('train/actor_grads', utils.grads_sum(self.actor), self._step)
             self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
-            self.callback.add_scalar('train/encoder_grads', utils.grads_sum(self.encoder), self._step)
+            self.callback.add_scalar('train/encoder_grads',
+                                     utils.grads_sum(self.encoder),
+                                     self._step)
         self._update_targets()
         self._step += 1
 
@@ -60,12 +63,14 @@ class RSAC(nn.Module):
             target_dist = self._target_actor(target_states)
             sampled_actions = target_dist.sample([self._c.num_samples])
             sampled_log_probs = target_dist.log_prob(sampled_actions).unsqueeze(-1)
+
             q_values = self._target_critic(
                 torch.repeat_interleave(target_states[None], self._c.num_samples, 0),
-                sampled_actions
-            ).min(-1, keepdim=True).values
+                sampled_actions).min(-1, keepdim=True).values
+
             soft_values = torch.mean(q_values - alpha*sampled_log_probs, 0)
-            target_q_values = self._target_critic(target_states, actions).min(-1, keepdim=True).values
+            target_q_values = self._target_critic(target_states,
+                                                  actions).min(-1, keepdim=True).values
 
             log_probs = target_dist.log_prob(actions).unsqueeze(-1)
             cs = torch.minimum(torch.tensor(1.), (log_probs - behaviour_log_probs).exp())
@@ -79,7 +84,8 @@ class RSAC(nn.Module):
         loss = self._sequence_discount(loss)*loss
 
         if self._c.debug:
-            self.callback.add_scalar('train/mean_reward', rewards.detach().mean() / self._c.action_repeat, self._step)
+            self.callback.add_scalar('train/mean_reward',
+                                     rewards.detach().mean() / self._c.action_repeat, self._step)
             self.callback.add_scalar('train/mean_value', q_values.detach().mean(), self._step)
             self.callback.add_scalar('train/retrace_weight', cs.detach().mean(), self._step)
             self.callback.add_scalar('train/mean_deltas', deltas.detach().mean(), self._step)
@@ -89,7 +95,8 @@ class RSAC(nn.Module):
         dist = self.actor(states)
         actions = dist.rsample([self._c.num_samples])
         log_prob = dist.log_prob(actions)
-        # todo here it is possible to separate mean and std and learn them with different learning rates:
+        # TODO: here it is possible to separate mean and std
+        #   and learn them with different learning rates.
         #   it can help exploration in exchange for more computations
         q_values = self._target_critic(
             torch.repeat_interleave(states[None], self._c.num_samples, 0),
@@ -137,7 +144,7 @@ class RSAC(nn.Module):
     @staticmethod
     def cell_roll(cell, inp, state):
         states = []
-        for i, x in enumerate(inp):
+        for x in inp:
             state = cell(x, state)
             states.append(state)
         return torch.stack(states)
@@ -174,8 +181,10 @@ class RSAC(nn.Module):
             encoder = models.PixelsEncoder(obs_dim, emb)
             decoder = models.PixelsDecoder(emb, obs_dim)
         elif self._c.observe == 'point_cloud':
-            encoder = models.PointCloudEncoder(3, emb, layers=self._c.pn_layers, features_from_layers=())
-            decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers, pn_number=self._c.pn_number)
+            encoder = models.PointCloudEncoder(3, emb, layers=self._c.pn_layers,
+                                               features_from_layers=())
+            decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers,
+                                               pn_number=self._c.pn_number)
         else:
             raise NotImplementedError
 
@@ -196,7 +205,8 @@ class RSAC(nn.Module):
             utils.make_targets(self.encoder, self.actor, self.critic, self.projection)
 
         self._rl_params = utils.make_param_group(self.critic, self.actor)
-        self._ae_params = utils.make_param_group(self.encoder, self.dm, self.projection, self.prediction, self.decoder)
+        self._ae_params = utils.make_param_group(self.encoder, self.dm,
+                                                 self.projection, self.prediction, self.decoder)
 
         self.optim = torch.optim.Adam([
             {'params': self._rl_params, 'lr': self._c.rl_lr},

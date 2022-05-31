@@ -9,13 +9,16 @@ class Wrapper:
     def __init__(self, env):
         self.env = env
 
-    def observation(self, timestamp):
+    @staticmethod
+    def observation(timestamp):
         return timestamp.observation
 
-    def reward(self, timestamp):
+    @staticmethod
+    def reward(timestamp):
         return np.float32(timestamp.reward)
 
-    def done(self, timestamp):
+    @staticmethod
+    def done(timestamp):
         return timestamp.last()
 
     def step(self, action):
@@ -165,14 +168,15 @@ class PixelsWrapper(Wrapper):
 
 
 class PointCloudWrapper(Wrapper):
-    def __init__(self, env, pn_number=1000, render_kwargs=None, static_camera=False, as_pixels=False, downsample=1):
+    def __init__(self, env, pn_number=1000, render_kwargs=None,
+                 static_camera=False, as_pixels=False, downsample=1):
         super().__init__(env)
         self.render_kwargs = render_kwargs or dict(camera_id=0, height=240, width=320)
         assert all(map(lambda k: k in self.render_kwargs, ('camera_id', 'height', 'width')))
         self.pn_number = pn_number
 
         self.scene_option = wrapper.MjvOption()
-        self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0  # results in wrong segmentation for some envs
+        self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0
 
         self.static_camera = static_camera
         self.as_pixels = as_pixels
@@ -181,7 +185,8 @@ class PointCloudWrapper(Wrapper):
         self._inverse_matrix = self.inverse_matrix() if static_camera else None
 
     def observation(self, timestamp):
-        depth_map = self.physics.render(depth=True, **self.render_kwargs, scene_option=self.scene_option)
+        depth_map = self.physics.render(depth=True, **self.render_kwargs,
+                                        scene_option=self.scene_option)
         point_cloud = self._get_point_cloud(depth_map)
         if self.as_pixels:
             # TODO: decide if segmentation or another mask is needed
@@ -210,7 +215,8 @@ class PointCloudWrapper(Wrapper):
         return rotation.T@inv_mat
 
     def _segmentation_mask(self):
-        seg = self.physics.render(segmentation=True, **self.render_kwargs, scene_option=self.scene_option)
+        seg = self.physics.render(segmentation=True, **self.render_kwargs,
+                                  scene_option=self.scene_option)
         model_id, obj_type = np.split(seg, 2, -1)
         return (obj_type != -1).flatten()
 

@@ -19,19 +19,6 @@ class LayerNormTanhEmbedding(nn.Module):
         return self.emb(x)
     
     
-# class LayerNormTanhMLP(nn.Module):
-#     """One layer LayerNormTanhEmbedding before MLP."""
-#     def __init__(self, *layers, act=nn.ReLU):
-#         super().__init__()
-#         self.net = nn.Sequential(
-#             LayerNormTanhEmbedding(layers[0], layers[1]),
-#             build_mlp(*layers[1:], act=act)
-#         )
-#
-#     def forward(self, inp):
-#         return self.net(inp)
-
-
 class Critic(nn.Module):
     def __init__(self, in_features, layers):
         super().__init__()
@@ -55,13 +42,16 @@ class Actor(nn.Module):
         mu, std = x.chunk(2, -1)
         mu = self.mean_scale * torch.tanh(mu / self.mean_scale)
         std = torch.maximum(std, torch.full_like(std, -18.))
-        std = F.softplus(std + self.init_std) + 1e-4
+        std = F.softplus(std + self.init_std) + 1e-3
         return self.get_dist(mu, std)
 
     @staticmethod
     def get_dist(mu, std):
         dist = td.Normal(mu, std)
-        dist = td.transformed_distribution.TransformedDistribution(dist, TruncatedTanhTransform())
+        dist = td.transformed_distribution.TransformedDistribution(
+            dist,
+            td.transforms.TanhTransform(cache_size=1)
+        )
         return td.Independent(dist, 1)
 
 
