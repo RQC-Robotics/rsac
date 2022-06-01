@@ -52,7 +52,8 @@ class Actor(nn.Module):
             dist,
             td.transforms.TanhTransform(cache_size=1)
         )
-        return td.Independent(dist, 1)
+        return dist
+        # return td.Independent(dist, 1)
 
 
 class PointCloudDecoder(nn.Module):
