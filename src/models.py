@@ -1,5 +1,5 @@
 import torch
-from .utils import build_mlp, TruncatedTanhTransform
+from .utils import build_mlp
 nn = torch.nn
 F = nn.functional
 td = torch.distributions

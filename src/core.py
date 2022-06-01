@@ -22,16 +22,11 @@ class RLAlg:
         self.interactions_count = 0
 
     def learn(self):
-        def update_buffer():
+        while self.interactions_count < self.config.total_steps:
             tr = utils.simulate(self.env, self.policy, True)
             self.buffer.add(tr)
-            self.interactions_count += 1000
+            self.interactions_count += self.config.action_repeat*len(tr['actions'])
 
-        # prefill
-        [update_buffer() for _ in range(10)]
-
-        while self.interactions_count < self.config.total_steps:
-            update_buffer()
             dl = DataLoader(self.buffer, batch_size=self.config.batch_size, drop_last=True)
             self.agent.train()
             for i, tr in enumerate(dl):
@@ -40,13 +35,15 @@ class RLAlg:
                     ('observations', 'actions', 'rewards', 'log_probs')
                 )
                 self.agent.step(obs, actions, rewards, log_probs)
-                if i == self.config.training_steps:
+                if i == self.config.training_steps - 1:
                     break
 
             if self.interactions_count % self.config.eval_freq == 0:
                 self.agent.eval()
-                scores = [utils.simulate(self.env, self.policy, False)['rewards'].sum() for _ in range(10)]
-                self.callback.add_scalar('test/eval_reward', np.mean(scores), self.interactions_count)
+                scores = [utils.simulate(self.env, self.policy, False)['rewards'].sum()
+                          for _ in range(10)]
+                self.callback.add_scalar('test/eval_reward', np.mean(scores),
+                                         self.interactions_count)
                 self.callback.add_scalar('test/eval_std', np.std(scores), self.interactions_count)
 
             if self.interactions_count % (5*self.config.eval_freq) == 0:
@@ -71,8 +68,10 @@ class RLAlg:
         alg = cls(config)
 
         if (path / 'checkpoint').exists():
-            chkp = torch.load(path / 'checkpoint',
-                              map_location=torch.device(config.device if torch.cuda.is_available() else 'cpu'))
+            chkp = torch.load(
+                path / 'checkpoint',
+                map_location=torch.device(config.device if torch.cuda.is_available() else 'cpu')
+            )
             with torch.no_grad():
                 alg.agent.load_state_dict(chkp['params'], strict=False)
                 alg.agent.optim.load_state_dict(chkp['optim'])

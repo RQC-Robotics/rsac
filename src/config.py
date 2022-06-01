@@ -42,24 +42,23 @@ class Config(BaseConfig):
     init_log_alpha: float = -2.
 
     # architecture
-    critic_layers: tuple = (256, 256)
-    actor_layers: tuple = (256, 256)
+    critic_layers: tuple = (256, 256, 256)
+    actor_layers: tuple = (256, 256, 256)
     obs_emb_dim: int = 64
     mean_scale: float = 5.
 
     # PointNet
     pn_number: int = 600
-    pn_layers: tuple = (128, 128, 128)
+    pn_layers: tuple = (256, 128, 64)
 
     # train
     rl_lr: float = 3e-4
     ae_lr: float = 3e-4
-    dual_lr: float = 1e-2
+    dual_lr: float = 1e-3
     weight_decay: float = 0.
     critic_tau: float = .995
     actor_tau: float = .995
-    encoder_tau: float = .99
-    max_grad: float = 100.
+    encoder_tau: float = .95  # should it be equal to critics polyak?
 
     total_steps: int = 2*10**6
     training_steps: int = 125

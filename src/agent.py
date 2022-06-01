@@ -1,5 +1,4 @@
 import torch
-from torch.nn.utils import clip_grad_norm_
 from pytorch3d.loss import chamfer_distance
 from . import models, utils, wrappers
 td = torch.distributions
@@ -43,9 +42,8 @@ class RSAC(nn.Module):
 
         self.optim.zero_grad()
         model_loss.backward()
-        clip_grad_norm_(self._rl_params, self._c.max_grad)
-        clip_grad_norm_(self._ae_params, self._c.max_grad)
         self.optim.step()
+
         if self._c.debug:
             self.callback.add_scalar('train/actor_loss', actor_loss, self._step)
             self.callback.add_scalar('train/auxiliary_loss', auxiliary_loss, self._step)
@@ -133,7 +131,8 @@ class RSAC(nn.Module):
             pred_embeds = self.prediction(pred_embeds)
 
             target_states_emb = self._target_projection(target_states_emb[1:])
-            target_states_emb = target_states_emb.unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
+            target_states_emb = target_states_emb.unfold(
+                0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
 
             contrastive_loss = - self.cos_sim(pred_embeds, target_states_emb)
             return self._c.spr_coef*contrastive_loss.mean()
@@ -173,6 +172,7 @@ class RSAC(nn.Module):
         self.prediction = utils.build_mlp(emb, emb, emb)
         self.cos_sim = nn.CosineSimilarity(dim=-1)
 
+        # Encoder+decoder
         frames_stack, obs_dim, *_ = obs_spec.shape
         if self._c.observe == 'states':
             encoder = models.LayerNormTanhEmbedding(obs_dim, emb)

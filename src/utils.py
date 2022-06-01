@@ -63,6 +63,7 @@ def simulate(env, policy, training):
         tr[k] = np.stack(v)
     return tr
 
+
 # TODO: compressed save
 class TrajectoryBuffer(Dataset):
     def __init__(self, capacity, seq_len):
@@ -81,11 +82,11 @@ class TrajectoryBuffer(Dataset):
 
     def __len__(self):
         # coef can be estimated as ~ trajectory_len / training_sequence_len
-        return 50*len(self._data)
+        return 30*len(self._data)
 
 
 class TruncatedTanhTransform(td.transforms.TanhTransform):
-    _lim = .99997
+    _lim = .999997
 
     def _inverse(self, y):
         y = torch.clamp(y, min=-self._lim, max=self._lim)

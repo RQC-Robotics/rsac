@@ -60,7 +60,9 @@ def train_pca(path, lr, epochs, batch_size):
         print(f'Epoch {i} loss: {loss}')
 
     observations, states = get_data()
-    states_pred, states = map(lambda t: t.detach().squeeze(1).cpu().numpy(), (pca(observations), states))
+    states_pred, states = map(lambda t: t.detach().squeeze(1).cpu().numpy(),
+                              (pca.observe(observations), states)
+                              )
     for i in range(states_pred.shape[-1]):
         plt.figure(figsize=(10, 6))
         plt.plot(states_pred[:, i], label='pred')
