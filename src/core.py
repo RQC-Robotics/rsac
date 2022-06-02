@@ -93,7 +93,7 @@ class RLAlg:
                                              downsample=self.config.downsample)
         else:
             raise NotImplementedError
-        env = wrappers.FrameStack(env, self.config.action_repeat)  # w/o loss of information
+        env = wrappers.FrameStack(env, self.config.frames_stack)
         env = wrappers.ActionRepeat(env, self.config.action_repeat)
         return env
 
