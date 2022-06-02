@@ -30,13 +30,13 @@ class RLAlg:
             dl = DataLoader(self.buffer, batch_size=self.config.batch_size, drop_last=True)
             self.agent.train()
             for i, tr in enumerate(dl):
+                if i == self.config.training_steps:
+                    break
                 obs, actions, rewards, log_probs = map(
                     lambda k: tr[k].to(self.agent.device).transpose(0, 1),
                     ('observations', 'actions', 'rewards', 'log_probs')
                 )
                 self.agent.step(obs, actions, rewards, log_probs)
-                if i == self.config.training_steps - 1:
-                    break
 
             if self.interactions_count % self.config.eval_freq == 0:
                 self.agent.eval()
@@ -89,7 +89,8 @@ class RLAlg:
         elif self.config.observe in wrappers.PixelsWrapper.channels.keys():
             env = wrappers.PixelsWrapper(env, mode=self.config.observe)
         elif self.config.observe == 'point_cloud':
-            env = wrappers.PointCloudWrapper(env, pn_number=self.config.pn_number, downsample=4)
+            env = wrappers.PointCloudWrapper(env, pn_number=self.config.pn_number,
+                                             downsample=self.config.downsample)
         else:
             raise NotImplementedError
         env = wrappers.ActionRepeat(env, self.config.action_repeat)

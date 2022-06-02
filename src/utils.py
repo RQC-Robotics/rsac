@@ -82,11 +82,11 @@ class TrajectoryBuffer(Dataset):
 
     def __len__(self):
         # coef can be estimated as ~ trajectory_len / training_sequence_len
-        return 30*len(self._data)
+        return 32 * len(self._data)
 
 
 class TruncatedTanhTransform(td.transforms.TanhTransform):
-    _lim = .999997
+    _lim = 1. - 3e-7
 
     def _inverse(self, y):
         y = torch.clamp(y, min=-self._lim, max=self._lim)

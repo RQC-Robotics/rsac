@@ -1,5 +1,5 @@
 import torch
-from .utils import build_mlp
+from .utils import build_mlp, TruncatedTanhTransform
 nn = torch.nn
 F = nn.functional
 td = torch.distributions
@@ -50,10 +50,9 @@ class Actor(nn.Module):
         dist = td.Normal(mu, std)
         dist = td.transformed_distribution.TransformedDistribution(
             dist,
-            td.transforms.TanhTransform(cache_size=1)
+            TruncatedTanhTransform(cache_size=1),
         )
         return dist
-        # return td.Independent(dist, 1)
 
 
 class PointCloudDecoder(nn.Module):
@@ -70,7 +69,7 @@ class PointCloudDecoder(nn.Module):
                 act(),
                 nn.Linear(layers[i], layers[i+1]),
             )
-            self.deconvs.add_module(f'deconv{i}', block)
+            self.deconvs.append(block)
 
     def forward(self, x):
         return self.deconvs(x)

@@ -1,4 +1,5 @@
 import torch
+from torch.nn.utils import clip_grad_norm_
 from pytorch3d.loss import chamfer_distance
 from . import models, utils, wrappers
 td = torch.distributions
@@ -42,6 +43,7 @@ class RSAC(nn.Module):
 
         self.optim.zero_grad()
         model_loss.backward()
+        clip_grad_norm_(self._ae_params, self._c.max_grad)
         self.optim.step()
 
         if self._c.debug:
@@ -154,7 +156,6 @@ class RSAC(nn.Module):
         return discount.reshape(-1, *shape)
 
     def _build(self):
-        # TODO: weight decay, value-function, make contrastive dimensions larger
         emb = self._c.obs_emb_dim
         self.act_dim = self.env.action_spec().shape[0]
         obs_spec = self.env.observation_spec()
@@ -214,7 +215,7 @@ class RSAC(nn.Module):
             {'params': [self._log_alpha], 'lr': self._c.dual_lr}
         ])
         # Per-dimension constraint
-        self._target_entropy = -1
+        self._target_entropy = -1.
         self.to(self.device)
 
     @torch.no_grad()
