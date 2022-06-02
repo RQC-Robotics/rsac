@@ -1,8 +1,22 @@
 import torch
-from .utils import build_mlp, TanhTransform
+from .utils import build_mlp, TruncatedTanhTransform
 nn = torch.nn
 F = nn.functional
 td = torch.distributions
+
+
+class LayerNormTanhEmbedding(nn.Module):
+    """MLP embedded with LayerNorm (applied to the last dim) and tanh."""
+    def __init__(self, *layers, act=nn.ELU):
+        super().__init__()
+        self.emb = nn.Sequential(
+            build_mlp(*layers, act=act),
+            nn.LayerNorm(layers[-1]),
+            nn.Tanh()
+        )
+
+    def forward(self, x):
+        return self.emb(x)
 
 
 class Critic(nn.Module):
@@ -28,37 +42,21 @@ class Actor(nn.Module):
         mu, std = x.chunk(2, -1)
         mu = self.mean_scale * torch.tanh(mu / self.mean_scale)
         std = torch.maximum(std, torch.full_like(std, -18.))
-        std = F.softplus(std + self.init_std) + 1e-4
+        std = F.softplus(std + self.init_std) + 1e-3
         return self.get_dist(mu, std)
 
     @staticmethod
     def get_dist(mu, std):
         dist = td.Normal(mu, std)
-        dist = td.transformed_distribution.TransformedDistribution(dist, TanhTransform())
-        dist = td.Independent(dist, 1)
+        dist = td.transformed_distribution.TransformedDistribution(
+            dist,
+            TruncatedTanhTransform(cache_size=1),
+        )
         return dist
 
 
-class Embedding(nn.Module):
-    def __init__(self, *sizes, act=nn.ELU):
-        super().__init__()
-        self.emb = nn.Sequential(
-            build_mlp(*sizes, act=act),
-            nn.LayerNorm(sizes[-1]),
-            nn.Tanh()
-        )
-
-    def forward(self, x):
-        return self.emb(x)
-
-
-class DummyEncoder(Embedding):
-    def forward(self, x):
-        return self.emb(x), None
-
-
 class PointCloudDecoder(nn.Module):
-    def __init__(self, in_features, pn_number, layers, act=nn.ELU):
+    def __init__(self, in_features, pn_number, layers, act=nn.ReLU):
         super().__init__()
 
         layers = layers + (3,)
@@ -71,58 +69,32 @@ class PointCloudDecoder(nn.Module):
                 act(),
                 nn.Linear(layers[i], layers[i+1]),
             )
-            self.deconvs.add_module(f'deconv{i}', block)
+            self.deconvs.append(block)
 
     def forward(self, x):
         return self.deconvs(x)
 
 
 class PointCloudEncoder(nn.Module):
-    def __init__(self, in_features, out_features, layers, dropout=0., act=nn.ELU):
-        super().__init__()
-        self.convs = nn.Sequential()
-
-        sizes = (in_features,) + layers
-        for i in range(len(sizes)-1):
-            block = nn.Sequential(
-                nn.Linear(sizes[i], sizes[i+1]),
-                act(),
-                nn.Dropout(dropout)
-            )
-            self.convs.add_module(f'conv{i}', block)
-
-        self.fc = nn.Sequential(
-            nn.Linear(sizes[-1], out_features),
-            nn.LayerNorm(out_features),
-            nn.Tanh()
-        )
-
-    def forward(self, x):
-        x = self.convs(x)
-        values, indices = torch.max(x, -2)
-        return self.fc(values), indices
-
-
-class PointCloudEncoderGlobal(nn.Module):
-    """The same encoder but with an option to process global features of selected points."""
-    def __init__(self, in_features, out_features, sizes, dropout=0., act=nn.ELU, features_from_layers=(0,)):
+    """PointNet with an option to process global features of selected points."""
+    def __init__(self, in_features, out_features, layers, act=nn.ReLU, features_from_layers=(0,)):
         super().__init__()
 
-        sizes = (in_features,) + sizes
+        layers = (in_features,) + layers
         self.layers = nn.ModuleList()
-        for i in range(len(sizes) - 1):
+        for i in range(len(layers) - 1):
             block = nn.Sequential(
-                nn.Linear(sizes[i], sizes[i + 1]),
+                nn.Linear(layers[i], layers[i + 1]),
                 act(),
-                nn.Dropout(dropout)
             )
             self.layers.append(block)
 
         if isinstance(features_from_layers, int):
             features_from_layers = (features_from_layers, )
         self.selected_layers = features_from_layers
-        self.fc_size = sizes[-1] * (1 + sum([sizes[i] for i in self.selected_layers]))
-        self.fc = Embedding(self.fc_size, out_features)
+
+        self.fc_size = layers[-1] * (1 + sum([layers[i] for i in self.selected_layers]))
+        self.fc = LayerNormTanhEmbedding(self.fc_size, out_features)
 
     def forward(self, x):
         features = [x]
@@ -136,7 +108,7 @@ class PointCloudEncoderGlobal(nn.Module):
                 [self._gather(features[ind], indices) for ind in self.selected_layers],
                 -1)
             values = torch.cat((values.unsqueeze(-1), selected_features), -1).flatten(-2)
-        return self.fc(values), indices
+        return self.fc(values)
 
     @staticmethod
     def _gather(features, indices):
@@ -144,21 +116,22 @@ class PointCloudEncoderGlobal(nn.Module):
         return torch.gather(features, -2, indices)
 
 
-class PixelEncoder(nn.Module):
-    def __init__(self, in_channels=3, out_features=64, depth=32, act=nn.ELU):
+class PixelsEncoder(nn.Module):
+    def __init__(self, in_channels=3, out_features=64, depth=32, act=nn.ReLU):
         super().__init__()
-
         self.convs = nn.Sequential(
             nn.Conv2d(in_channels, depth, 3, 2),
             act(),
             nn.Conv2d(depth, depth, 3, 1),
             act(),
-            nn.Conv2d(depth, depth, 3, 1),
-            act(),
-            nn.Conv2d(depth, depth, 3, 1),
-            act(),
             nn.Flatten(),
-            Embedding(depth*35*35, out_features)
+            LayerNormTanhEmbedding(depth*39*39, out_features)
+            # nn.Conv2d(depth, depth, 3, 1),
+            # act(),
+            # nn.Conv2d(depth, depth, 3, 1),
+            # act(),
+            # nn.Flatten(),
+            # LayerNormTanhEmbedding(depth*35*35, out_features)
         )
 
     def forward(self, img):
@@ -166,22 +139,23 @@ class PixelEncoder(nn.Module):
         img = img.flatten(0, len(prefix_shape)-1)
         img = self.convs(img)
         img = img.reshape(*prefix_shape, -1)
-        return img, None
+        return img
 
 
-class PixelDecoder(nn.Module):
-    def __init__(self, in_features, out_channels=3, depth=32, act=nn.ELU):
+class PixelsDecoder(nn.Module):
+    def __init__(self, in_features, out_channels=3, depth=32, act=nn.ReLU):
         super().__init__()
+        dim = 39 # 39 - for two conv layers, 35 for 4 layers
         self.deconvs = nn.Sequential(
-            nn.Linear(in_features, depth*35*35),
+            nn.Linear(in_features, depth*dim**2),
             act(),
-            nn.Unflatten(-1, (depth, 35, 35)),
+            nn.Unflatten(-1, (depth, dim, dim)),
             nn.ConvTranspose2d(depth, depth, 3, 1),
             act(),
-            nn.ConvTranspose2d(depth, depth, 3, 1),
-            act(),
-            nn.ConvTranspose2d(depth, depth, 3, 1),
-            act(),
+            # nn.ConvTranspose2d(depth, depth, 3, 1),
+            # act(),
+            # nn.ConvTranspose2d(depth, depth, 3, 1),
+            # act(),
             nn.ConvTranspose2d(depth, out_channels, 3, 2, output_padding=1),
         )
 

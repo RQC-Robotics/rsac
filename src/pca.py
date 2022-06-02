@@ -13,11 +13,11 @@ class PCA(nn.Module):
         super().__init__()
         self.alg = alg
         self.head = nn.Linear(alg.config.hidden_dim, len(alg.env.physics.state())).to(alg.agent.device)
-        self.optim = torch.optim.SGD(self.head.parameters(), lr=lr)
+        self.optim = torch.optim.Adam(self.head.parameters(), lr=lr)
 
     def observe(self, obs, hidden):
         with torch.no_grad():
-            obs, _ = self.alg.agent.encoder(obs)
+            obs = self.alg.agent.encoder(obs)
             hidden = self.alg.agent.cell(obs, hidden)
         return self.head(hidden), hidden
 
@@ -49,11 +49,7 @@ def parse_args():
 
 
 def train_pca(path, lr, epochs, batch_size):
-    path = pathlib.Path(path)
-    config = Config()
-    config = config.load(path / 'config.yml')
-    alg = RLAlg(config)
-    alg.load(path)
+    alg = RLAlg.load(path)
     pca = PCA(alg, lr)
     monitor = wrappers.Monitor(alg.env)
 
@@ -74,7 +70,8 @@ def train_pca(path, lr, epochs, batch_size):
         print(f'Epoch {i} loss: {loss}')
 
     observations, states = get_data()
-    states_pred, states = map(lambda t: t.detach().squeeze(1).cpu().numpy(), (pca(observations), states))
+    states_pred, states = map(lambda t: t.detach().squeeze(1).cpu().numpy(),
+                              (pca(observations), states))
     for i in range(states_pred.shape[-1]):
         plt.figure(figsize=(10, 6))
         plt.plot(states_pred[:, i], label='pred')

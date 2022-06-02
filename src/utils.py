@@ -11,7 +11,7 @@ F = nn.functional
 td = torch.distributions
 
 
-def build_mlp(*sizes, act=nn.ELU):
+def build_mlp(*sizes, act=nn.ReLU):
     mlp = []
     for i in range(1, len(sizes)):
         mlp.append(nn.Linear(sizes[i-1], sizes[i]))
@@ -55,7 +55,7 @@ def simulate(env, policy, training):
         observations.append(obs)
         actions.append(action)
         dones.append([done])
-        rewards.append([reward])
+        rewards.append(np.float32([reward]))
         log_probs.append(log_prob)
         obs = new_obs
 
@@ -72,6 +72,7 @@ def simulate(env, policy, training):
     return tr
 
 
+# TODO: compressed save
 class TrajectoryBuffer(Dataset):
     def __init__(self, capacity, seq_len):
         self._data = deque(maxlen=capacity)
@@ -89,11 +90,11 @@ class TrajectoryBuffer(Dataset):
 
     def __len__(self):
         # coef can be estimated as ~ trajectory_len / training_sequence_len
-        return 50*len(self._data)
+        return 32 * len(self._data)
 
 
-class TanhTransform(td.transforms.TanhTransform):
-    _lim = .9999997
+class TruncatedTanhTransform(td.transforms.TanhTransform):
+    _lim = 1. - 3e-7
 
     def _inverse(self, y):
         y = torch.clamp(y, min=-self._lim, max=self._lim)

@@ -22,31 +22,28 @@ class RLAlg:
         self.interactions_count = 0
 
     def learn(self):
-        def update_buffer():
+        while self.interactions_count < self.config.total_steps:
             tr = utils.simulate(self.env, self.policy, True)
             self.buffer.add(tr)
-            self.interactions_count += 1000
+            self.interactions_count += self.config.action_repeat*len(tr['actions'])
 
-        # prefill
-        [update_buffer() for _ in range(20)]
-
-        while self.interactions_count < self.config.total_steps:
-            update_buffer()
             dl = DataLoader(self.buffer, batch_size=self.config.batch_size, drop_last=True)
             self.agent.train()
             for i, tr in enumerate(dl):
+                if i == self.config.training_steps:
+                    break
                 obs, actions, rewards, log_probs, hidden_states = map(
                     lambda k: tr[k].to(self.agent.device).transpose(0, 1),
                     ('observations', 'actions', 'rewards', 'log_probs', 'states')
                 )
                 self.agent.step(obs, actions, rewards, log_probs, hidden_states)
-                if i == self.config.training_steps:
-                    break
 
             if self.interactions_count % self.config.eval_freq == 0:
                 self.agent.eval()
-                scores = [utils.simulate(self.env, self.policy, False)['rewards'].sum() for _ in range(10)]
-                self.callback.add_scalar('test/eval_reward', np.mean(scores), self.interactions_count)
+                scores = [utils.simulate(self.env, self.policy, False)['rewards'].sum()
+                          for _ in range(10)]
+                self.callback.add_scalar('test/eval_reward', np.mean(scores),
+                                         self.interactions_count)
                 self.callback.add_scalar('test/eval_std', np.std(scores), self.interactions_count)
 
             if self.interactions_count % (5*self.config.eval_freq) == 0:
@@ -59,19 +56,22 @@ class RLAlg:
             'params': self.agent.state_dict(),
             'optim': self.agent.optim.state_dict(),
         }, self._task_path / 'checkpoint')
-        with open(self._task_path / 'buffer', 'wb') as buffer:
-            pickle.dump(self.buffer, buffer)
+        # TODO: restore buffer saving
+        # with open(self._task_path / 'buffer', 'wb') as buffer:
+        #     pickle.dump(self.buffer, buffer)
 
     @classmethod
     def load(cls, path, **kwargs):
         path = pathlib.Path(path)
-        [f.unlink() for f in path.iterdir() if f.match('*tfevents*')]
+        #[f.unlink() for f in path.iterdir() if f.match('*tfevents*')]
         config = Config.load(path / 'config.yml', **kwargs)
         alg = cls(config)
 
         if (path / 'checkpoint').exists():
-            chkp = torch.load(path / 'checkpoint',
-                              map_location=torch.device(config.device if torch.cuda.is_available() else 'cpu'))
+            chkp = torch.load(
+                path / 'checkpoint',
+                map_location=torch.device(config.device if torch.cuda.is_available() else 'cpu')
+            )
             with torch.no_grad():
                 alg.agent.load_state_dict(chkp['params'], strict=False)
                 alg.agent.optim.load_state_dict(chkp['optim'])
@@ -89,9 +89,11 @@ class RLAlg:
         elif self.config.observe in wrappers.PixelsWrapper.channels.keys():
             env = wrappers.PixelsWrapper(env, mode=self.config.observe)
         elif self.config.observe == 'point_cloud':
-            env = wrappers.PointCloudWrapper(env, pn_number=self.config.pn_number)
+            env = wrappers.PointCloudWrapper(env, pn_number=self.config.pn_number,
+                                             downsample=self.config.downsample)
         else:
             raise NotImplementedError
+        env = wrappers.FrameStack(env, self.config.action_repeat)  # w/o loss of information
         env = wrappers.ActionRepeat(env, self.config.action_repeat)
         return env
 

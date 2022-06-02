@@ -34,11 +34,12 @@ class Config(BaseConfig):
     # algo
     discount: float = .99
     disclam: float = 1.
-    num_samples: int = 32
+    num_samples: int = 4
     action_repeat: int = 2
+    frames_stack: int = 1
     spr_coef: float = 2.
     spr_depth: int = 5
-    init_log_alpha: float = -4.
+    init_log_alpha: float = -2.
 
     # architecture
     critic_layers: tuple = (256, 256)
@@ -49,23 +50,23 @@ class Config(BaseConfig):
 
     # PointNet
     pn_number: int = 600
-    pn_layers: tuple = (64, 64, 128, 256)
-    pn_dropout: float = 0.
+    pn_layers: tuple = (64, 128, 256, 128)
+    downsample: int = 5
 
     # train
     rl_lr: float = 3e-4
     ae_lr: float = 3e-4
     dual_lr: float = 1e-3
-    weight_decay: float = 1e-7
+    weight_decay: float = 0.
     critic_tau: float = .995
     actor_tau: float = .995
     encoder_tau: float = .995
     max_grad: float = 100.
 
     total_steps: int = 2*10**6
-    training_steps: int = 100
-    seq_len: int = 50
-    batch_size: int = 50
+    training_steps: int = 250
+    seq_len: int = 8
+    batch_size: int = 16
     eval_freq: int = 20000
     buffer_size: int = 1000
     burn_in: int = 10
@@ -76,6 +77,7 @@ class Config(BaseConfig):
     logdir: str = 'logdir'
     device: str = 'cuda'
     observe: str = 'point_cloud'
+    debug: bool = True
 
     def __post_init__(self):
         super().__post_init__()
