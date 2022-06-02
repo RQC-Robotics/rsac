@@ -223,7 +223,8 @@ class RSAC(nn.Module):
             utils.make_targets(self.encoder, self.actor, self.critic, self.cell, self.projection)
 
         self._rl_params = utils.make_param_group(self.cell, self.critic, self.actor)
-        self._ae_params = utils.make_param_group(self.encoder, self.dm, self.projection, self.prediction, self.decoder)
+        self._ae_params = utils.make_param_group(self.encoder, self.dm, self.projection,
+                                                 self.prediction, self.decoder)
 
         self.optim = torch.optim.Adam([
             {'params': self._rl_params, 'lr': self._c.rl_lr},

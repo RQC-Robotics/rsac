@@ -50,7 +50,7 @@ class Config(BaseConfig):
 
     # PointNet
     pn_number: int = 600
-    pn_layers: tuple = (64, 128, 256, 128)
+    pn_layers: tuple = (256, 256)
     downsample: int = 5
 
     # train

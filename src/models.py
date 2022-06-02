@@ -69,7 +69,7 @@ class PointCloudDecoder(nn.Module):
                 act(),
                 nn.Linear(layers[i], layers[i+1]),
             )
-            self.deconvs.append(block)
+            self.deconvs.add_module(f'deconv{i}', block)
 
     def forward(self, x):
         return self.deconvs(x)
