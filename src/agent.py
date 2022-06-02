@@ -37,7 +37,6 @@ class RSAC(nn.Module):
 
     def step(self, obs, actions, rewards, log_probs, hidden_states):
         # burn_in
-        import pdb; pdb.set_trace()
         init_hidden = hidden_states[0]
         if self._c.burn_in > 0:
             target_obs_emb = self._target_encoder(obs[:self._c.burn_in])
