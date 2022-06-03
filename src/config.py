@@ -57,15 +57,14 @@ class Config(BaseConfig):
     ae_lr: float = 3e-4
     dual_lr: float = 3e-4
     weight_decay: float = 0.
-    # critic_tau: float = .995
-    # actor_tau: float = .995
-    # encoder_tau: float = .995
-    targets_update: int = 100
+    critic_tau: float = .995
+    actor_tau: float = .995
+    encoder_tau: float = .995
     max_grad: float = 100.
 
     total_steps: int = 2*10**6
-    training_steps: int = 125
-    seq_len: int = 8
+    training_steps: int = 250
+    seq_len: int = 16
     batch_size: int = 16
     eval_freq: int = 20000
     buffer_size: int = 1000

@@ -218,18 +218,9 @@ class RSAC(nn.Module):
         self._target_entropy = -1.
         self.to(self.device)
 
-    # @torch.no_grad()
-    # def _update_targets(self):
-    #     utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
-    #     # utils.soft_update(self._target_projection, self.projection, self._c.encoder_tau)
-    #     utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
-    #     utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)
-
     @torch.no_grad()
     def _update_targets(self):
-        if self._step % self._c.targets_update == 0:
-            utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
-            # utils.soft_update(self._target_projection, self.projection, self._c.encoder_tau)
-            utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
-            utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)
-
+        utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
+        # utils.soft_update(self._target_projection, self.projection, self._c.encoder_tau)
+        utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
+        utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)
