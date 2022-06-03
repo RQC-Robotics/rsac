@@ -43,6 +43,7 @@ class RSAC(nn.Module):
 
         self.optim.zero_grad()
         model_loss.backward()
+        clip_grad_norm_(self._rl_params, self._c.max_grad)
         clip_grad_norm_(self._ae_params, self._c.max_grad)
         self.optim.step()
 
@@ -110,7 +111,7 @@ class RSAC(nn.Module):
         
         actor_loss = torch.mean((alpha.detach() * log_prob).sum(-1) - q_values, 0)
         actor_loss = self._sequence_discount(actor_loss)*actor_loss
-        dual_loss = - alpha * (log_prob.detach() + self._target_entropy)
+        dual_loss = - alpha * (log_prob.detach() + self._c.target_ent_per_dim)
         return actor_loss.mean(), dual_loss.mean()
 
     def _auxiliary_loss(self, obs, actions, states_emb, target_states_emb):
@@ -214,8 +215,6 @@ class RSAC(nn.Module):
             {'params': self._ae_params, 'lr': self._c.ae_lr, 'weight_decay': self._c.weight_decay},
             {'params': [self._log_alpha], 'lr': self._c.dual_lr}
         ])
-        # Per-dimension constraint
-        self._target_entropy = -1.
         self.to(self.device)
 
     @torch.no_grad()
