@@ -17,8 +17,8 @@ class LayerNormTanhEmbedding(nn.Module):
 
     def forward(self, x):
         return self.emb(x)
-    
-    
+
+
 class Critic(nn.Module):
     def __init__(self, in_features, layers):
         super().__init__()
@@ -69,7 +69,7 @@ class PointCloudDecoder(nn.Module):
                 act(),
                 nn.Linear(layers[i], layers[i+1]),
             )
-            self.deconvs.append(block)
+            self.deconvs.add_module(f'deconv{i}', block)
 
     def forward(self, x):
         return self.deconvs(x)
@@ -92,7 +92,7 @@ class PointCloudEncoder(nn.Module):
         if isinstance(features_from_layers, int):
             features_from_layers = (features_from_layers, )
         self.selected_layers = features_from_layers
-        
+
         self.fc_size = layers[-1] * (1 + sum([layers[i] for i in self.selected_layers]))
         self.fc = LayerNormTanhEmbedding(self.fc_size, out_features)
 
