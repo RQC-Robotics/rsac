@@ -37,7 +37,7 @@ class RSAC(nn.Module):
 
         rl_loss = self._policy_learning(states, actions, rewards, log_probs,
                                         target_states, alpha.detach())
-        auxiliary_loss = self._auxiliary_loss(obs, actions, states, target_states)
+        auxiliary_loss = self._auxiliary_loss(obs, states)
         actor_loss, dual_loss = self._policy_improvement(target_states, alpha)
         model_loss = rl_loss + auxiliary_loss + actor_loss + dual_loss
 
@@ -96,9 +96,6 @@ class RSAC(nn.Module):
         dist = self.actor(states)
         actions = dist.rsample([self._c.num_samples])
         log_prob = dist.log_prob(actions)
-        # TODO: here it is possible to separate mean and std
-        #   and learn them with different learning rates.
-        #   it can help exploration in exchange for more computations
         q_values = self._target_critic(
             torch.repeat_interleave(states[None], self._c.num_samples, 0),
             actions
@@ -114,7 +111,7 @@ class RSAC(nn.Module):
         dual_loss = - alpha * (log_prob.detach() + self._c.target_ent_per_dim)
         return actor_loss.mean(), dual_loss.mean()
 
-    def _auxiliary_loss(self, obs, actions, states_emb, target_states_emb):
+    def _auxiliary_loss(self, obs, states_emb):
         # todo check l2 reg; introduce lagrange multipliers
         if self._c.aux_loss == 'None':
             return torch.tensor(0.)
@@ -125,21 +122,6 @@ class RSAC(nn.Module):
             else:
                 loss = (obs_pred - obs).pow(2)
             return loss.mean()
-        elif self._c.aux_loss == 'contrastive':
-            actions = actions[:-1].unfold(0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
-            states_emb = states_emb[:-self._c.spr_depth].flatten(0, 1)
-
-            pred_embeds = self.cell_roll(self.dm, actions, states_emb)
-            pred_embeds = self.projection(pred_embeds)
-            pred_embeds = self.prediction(pred_embeds)
-
-            target_states_emb = self._target_projection(target_states_emb[1:])
-            target_states_emb = target_states_emb.unfold(
-                0, self._c.spr_depth, 1).flatten(0, 1).movedim(-1, 0)
-
-            contrastive_loss = - self.cos_sim(pred_embeds, target_states_emb)
-            return self._c.spr_coef*contrastive_loss.mean()
-
         else:
             raise NotImplementedError
 
@@ -168,47 +150,40 @@ class RSAC(nn.Module):
 
         self.critic = models.Critic(emb + self.act_dim, self._c.critic_layers)
 
-        # SPR
-        self.dm = nn.GRUCell(self.act_dim, emb)
-        self.projection = utils.build_mlp(emb, emb, emb)
-        self.prediction = utils.build_mlp(emb, emb, emb)
-        self.cos_sim = nn.CosineSimilarity(dim=-1)
-
         # Encoder+decoder
-        frames_stack, obs_dim, *_ = obs_spec.shape
+        obs_dim = obs_spec.shape[0]
         if self._c.observe == 'states':
-            encoder = models.LayerNormTanhEmbedding(obs_dim, emb)
-            decoder = nn.Linear(emb, obs_dim)
+            self.encoder = models.LayerNormTanhEmbedding(obs_dim, emb)
+            self.decoder = nn.Linear(emb, obs_dim)
         elif self._c.observe in wrappers.PixelsWrapper.channels.keys():
-            encoder = models.PixelsEncoder(obs_dim, emb)
-            decoder = models.PixelsDecoder(emb, obs_dim)
+            self.encoder = models.PixelsEncoder(obs_dim, emb)
+            self.decoder = models.PixelsDecoder(emb, obs_dim)
         elif self._c.observe == 'point_cloud':
-            encoder = models.PointCloudEncoder(3, emb, layers=self._c.pn_layers,
-                                               features_from_layers=())
-            decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers,
-                                               pn_number=self._c.pn_number)
+            frames_stack = obs_spec.shape[0]
+            frame_encoder = models.PointCloudEncoder(emb, layers=self._c.pn_layers,
+                                                     features_from_layers=())
+            frame_decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers,
+                                                     pn_number=self._c.pn_number)
+            self.encoder = nn.Sequential(
+                frame_encoder,
+                nn.Flatten(-2),
+                models.LayerNormTanhEmbedding(frames_stack * emb, emb)
+            )
+            self.decoder = nn.Sequential(
+                nn.Linear(emb, frames_stack*emb),
+                nn.Unflatten(-1, (frames_stack, emb)),
+                frame_decoder
+            )
         else:
             raise NotImplementedError
 
-        self.encoder = nn.Sequential(
-            encoder,
-            nn.Flatten(-2),
-            models.LayerNormTanhEmbedding(frames_stack * emb, emb)
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(emb, frames_stack * emb),
-            nn.Unflatten(-1, (frames_stack, emb)),
-            decoder
-        )
-
         self._log_alpha = nn.Parameter(torch.full((self.act_dim,), self._c.init_log_alpha))
 
-        self._target_encoder, self._target_actor, self._target_critic, self._target_projection =\
-            utils.make_targets(self.encoder, self.actor, self.critic, self.projection)
+        self._target_encoder, self._target_actor, self._target_critic =\
+            utils.make_targets(self.encoder, self.actor, self.critic)
 
         self._rl_params = utils.make_param_group(self.critic, self.actor)
-        self._ae_params = utils.make_param_group(self.encoder, self.dm,
-                                                 self.projection, self.prediction, self.decoder)
+        self._ae_params = utils.make_param_group(self.encoder, self.decoder)
 
         self.optim = torch.optim.Adam([
             {'params': self._rl_params, 'lr': self._c.rl_lr},
@@ -220,6 +195,5 @@ class RSAC(nn.Module):
     @torch.no_grad()
     def _update_targets(self):
         utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
-        # utils.soft_update(self._target_projection, self.projection, self._c.encoder_tau)
         utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
         utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)

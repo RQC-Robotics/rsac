@@ -77,10 +77,10 @@ class PointCloudDecoder(nn.Module):
 
 class PointCloudEncoder(nn.Module):
     """PointNet with an option to process global features of selected points."""
-    def __init__(self, in_features, out_features, layers, act=nn.ReLU, features_from_layers=(0,)):
+    def __init__(self, out_features, layers, act=nn.ReLU, features_from_layers=(0,)):
         super().__init__()
 
-        layers = (in_features,) + layers
+        layers = (3,) + layers
         self.layers = nn.ModuleList()
         for i in range(len(layers) - 1):
             block = nn.Sequential(

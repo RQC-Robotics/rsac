@@ -14,9 +14,8 @@ class RLAlg:
 
         self.config = config
         self.env = self.make_env()
-        self._task_path = pathlib.Path(config.logdir).joinpath(
-            f'./{config.task}/{config.observe}/{config.aux_loss}')
-        self.callback = SummaryWriter(log_dir=self._task_path)
+        self.task_path = pathlib.Path(config.logdir)
+        self.callback = SummaryWriter(log_dir=self.task_path)
         self.agent = RSAC(self.env, config, self.callback)
         self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len)
         self.interactions_count = 0
@@ -25,12 +24,15 @@ class RLAlg:
         while self.interactions_count < self.config.total_steps:
             tr = utils.simulate(self.env, self.policy, True)
             self.buffer.add(tr)
-            self.interactions_count += self.config.action_repeat*len(tr['actions'])
+            self.interactions_count += self.config.action_repeat * len(tr['actions'])
 
             dl = DataLoader(self.buffer, batch_size=self.config.batch_size, drop_last=True)
             self.agent.train()
+            training_steps = \
+                self.config.spi*len(tr['actions']) // (self.config.batch_size*self.config.seq_len)
+            
             for i, tr in enumerate(dl):
-                if i == self.config.training_steps:
+                if i == training_steps:
                     break
                 obs, actions, rewards, log_probs = map(
                     lambda k: tr[k].to(self.agent.device).transpose(0, 1),
@@ -45,19 +47,18 @@ class RLAlg:
                 self.callback.add_scalar('test/eval_reward', np.mean(scores),
                                          self.interactions_count)
                 self.callback.add_scalar('test/eval_std', np.std(scores), self.interactions_count)
-
-            if self.interactions_count % (5*self.config.eval_freq) == 0:
+                
                 self.save()
 
     def save(self):
-        self.config.save(self._task_path / 'config.yml')
+        self.config.save(self.task_path / 'config.yml')
         torch.save({
             'interactions': self.interactions_count,
             'params': self.agent.state_dict(),
             'optim': self.agent.optim.state_dict(),
-        }, self._task_path / 'checkpoint')
+        }, self.task_path / 'checkpoint')
         # TODO: restore buffer saving
-        # with open(self._task_path / 'buffer', 'wb') as buffer:
+        # with open(self.task_path / 'buffer', 'wb') as buffer:
         #     pickle.dump(self.buffer, buffer)
 
     @classmethod
@@ -86,15 +87,22 @@ class RLAlg:
         env = utils.make_env(self.config.task)
         if self.config.observe == 'states':
             env = wrappers.StatesWrapper(env)
+            env = wrappers.ActionRepeat(env, self.config.action_repeat)
         elif self.config.observe in wrappers.PixelsWrapper.channels.keys():
             env = wrappers.PixelsWrapper(env, mode=self.config.observe)
+            env = wrappers.ActionRepeat(env, self.config.action_repeat)
+            env = wrappers.FrameStack(env, self.config.frames_stack, stack=False)
         elif self.config.observe == 'point_cloud':
-            env = wrappers.PointCloudWrapper(env, pn_number=self.config.pn_number,
-                                             downsample=self.config.downsample)
+            env = wrappers.PointCloudWrapper(
+                env,
+                pn_number=self.config.pn_number,
+                downsample=self.config.downsample
+            )
+            env = wrappers.ActionRepeat(env, self.config.action_repeat)
+            env = wrappers.FrameStack(env, self.config.frames_stack, stack=True)
         else:
             raise NotImplementedError
-        env = wrappers.ActionRepeat(env, self.config.action_repeat)
-        env = wrappers.FrameStack(env, self.config.frames_stack)
+
         return env
 
     def policy(self, obs, training):

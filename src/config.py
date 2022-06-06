@@ -37,26 +37,24 @@ class Config(BaseConfig):
     num_samples: int = 1
     action_repeat: int = 2
     frames_stack: int = 3
-    spr_coef: float = 2.
-    spr_depth: int = 5
     init_log_alpha: float = -2.
     target_ent_per_dim: float = -1.
 
     # architecture
-    critic_layers: tuple = (256, 256, 256)
-    actor_layers: tuple = (256, 256, 256)
+    critic_layers: tuple = (256, 256)
+    actor_layers: tuple = (256, 256)
     obs_emb_dim: int = 64
     mean_scale: float = 5.
 
     # PointNet
-    pn_number: int = 500
+    pn_number: int = 100
     pn_layers: tuple = (256, 256)
-    downsample: int = 5
+    downsample: int = 3
 
     # train
     rl_lr: float = 3e-4
     ae_lr: float = 3e-4
-    dual_lr: float = 1e-2
+    dual_lr: float = 1e-3
     weight_decay: float = 0.
     critic_tau: float = .995
     actor_tau: float = .995
@@ -64,9 +62,9 @@ class Config(BaseConfig):
     max_grad: float = 100.
 
     total_steps: int = 2*10**6
-    training_steps: int = 250
+    spi: int = 256
     seq_len: int = 8
-    batch_size: int = 16
+    batch_size: int = 32
     eval_freq: int = 20000
     buffer_size: int = 1000
 
@@ -77,8 +75,3 @@ class Config(BaseConfig):
     device: str = 'cuda'
     observe: str = 'point_cloud'
     debug: bool = True
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.dm_control_spi = \
-            self.batch_size * self.training_steps * self.seq_len / (1000. / self.action_repeat)
