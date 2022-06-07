@@ -146,6 +146,7 @@ class PixelsDecoder(nn.Module):
     def __init__(self, in_features, out_channels=3, depth=32, act=nn.ReLU):
         super().__init__()
         dim = 39 # 39 - for two conv layers, 35 for 4 layers
+        self.out_channels = out_channels
         self.deconvs = nn.Sequential(
             nn.Linear(in_features, depth*dim**2),
             act(),
@@ -163,5 +164,5 @@ class PixelsDecoder(nn.Module):
         prefix_shape = x.shape[:-1]
         x = x.flatten(0, len(prefix_shape)-1)
         img = self.deconvs(x)
-        img = img.reshape(*prefix_shape, 3, 84, 84)
+        img = img.reshape(*prefix_shape, self.out_channels, 84, 84)
         return img
