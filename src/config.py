@@ -74,4 +74,4 @@ class Config(BaseConfig):
     logdir: str = 'logdir'
     device: str = 'cuda'
     observe: str = 'point_cloud'
-    debug: bool = True
+    debug: bool = False

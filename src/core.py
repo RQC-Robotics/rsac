@@ -33,8 +33,6 @@ class RLAlg:
             dl = DataLoader(
                 self.buffer.sample_subset(training_steps),
                 batch_size=self.config.batch_size,
-                num_workers=8,
-                prefetch_factor=4,
                 drop_last=True
             )
 
@@ -46,15 +44,15 @@ class RLAlg:
                 )
                 self.agent.step(obs, actions, rewards, done_flags, log_probs)
 
-        if self.interactions_count % self.config.eval_freq == 0:
-            self.agent.eval()
-            scores = [utils.simulate(self.env, self.policy, False)['rewards'].sum()
-                      for _ in range(10)]
-            self.callback.add_scalar('test/eval_reward', np.mean(scores),
-                                     self.interactions_count)
-            self.callback.add_scalar('test/eval_std', np.std(scores), self.interactions_count)
-
-            self.save()
+            if self.interactions_count % self.config.eval_freq == 0:
+                self.agent.eval()
+                scores = [utils.simulate(self.env, self.policy, False)['rewards'].sum()
+                          for _ in range(10)]
+                self.callback.add_scalar('test/eval_reward', np.mean(scores),
+                                         self.interactions_count)
+                self.callback.add_scalar('test/eval_std', np.std(scores), self.interactions_count)
+    
+                self.save()
 
     def save(self):
         self.config.save(self.task_path / 'config.yml')
