@@ -28,17 +28,17 @@ class RSAC(nn.Module):
         log_prob = dist.log_prob(action).sum(-1)
         return action, log_prob
 
-    def step(self, obs, actions, rewards, log_probs):
+    def step(self, obs, actions, rewards, dones, log_probs):
         states = self.encoder(obs)
         target_states = self._target_encoder(obs)
 
         alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -18.))
         alpha = F.softplus(alpha) + 1e-7
 
-        rl_loss = self._policy_learning(states, actions, rewards, log_probs,
+        rl_loss = self._policy_learning(states, actions, rewards, dones, log_probs,
                                         target_states, alpha.detach())
         auxiliary_loss = self._auxiliary_loss(obs, states)
-        actor_loss, dual_loss = self._policy_improvement(target_states, alpha)
+        actor_loss, dual_loss = self._policy_improvement(states.detach(), alpha)
         model_loss = rl_loss + auxiliary_loss + actor_loss + dual_loss
 
         self.optim.zero_grad()
@@ -59,7 +59,8 @@ class RSAC(nn.Module):
         self._update_targets()
         self._step += 1
 
-    def _policy_learning(self, states, actions, rewards, behaviour_log_probs, target_states, alpha):
+    def _policy_learning(self, states, actions, rewards, dones, behaviour_log_probs, target_states,
+                         alpha):
         with torch.no_grad():
             target_dist = self._target_actor(target_states)
             sampled_actions = target_dist.sample([self._c.num_samples])
@@ -69,20 +70,25 @@ class RSAC(nn.Module):
                 torch.repeat_interleave(target_states[None], self._c.num_samples, 0),
                 sampled_actions).min(-1, keepdim=True).values
 
-            soft_values = torch.mean(q_values - (alpha*sampled_log_probs).sum(-1, keepdim=True), 0)
+            soft_values = torch.mean(q_values - (alpha * sampled_log_probs).sum(-1, keepdim=True),
+                                     0)
             target_q_values = self._target_critic(target_states,
                                                   actions).min(-1, keepdim=True).values
 
             log_probs = target_dist.log_prob(actions).sum(-1, keepdim=True)
             cs = torch.minimum(torch.tensor(1.), (log_probs - behaviour_log_probs).exp())
-            deltas = rewards + self._c.discount*soft_values.roll(-1, 0) - target_q_values
-            target_q_values, deltas, cs = map(lambda t: t[:-1], (target_q_values, deltas, cs))
+            dones = dones.float()
+            deltas = rewards + self._c.discount * (1. - dones) * soft_values.roll(-1, 0) \
+                     - target_q_values
+            # The bootstrapped value is known(=0) if last transition is terminal
+            #   so we can use it in Q-value update, otherwise mask it.
+            deltas[-1] *= dones[-1]
             deltas = utils.retrace(deltas, cs, self._c.discount, self._c.disclam)
             target_q_values += deltas
 
         q_values = self.critic(states, actions)
-        loss = (q_values[:-1] - target_q_values).pow(2)
-        loss = self._sequence_discount(loss)*loss
+        loss = (q_values - target_q_values).pow(2)
+        loss = self._sequence_discount(loss) * loss
 
         if self._c.debug:
             self.callback.add_scalar('train/mean_reward',
@@ -96,18 +102,21 @@ class RSAC(nn.Module):
         dist = self.actor(states)
         actions = dist.rsample([self._c.num_samples])
         log_prob = dist.log_prob(actions)
-        q_values = self._target_critic(
+
+        self.critic.requires_grad_(False)
+        q_values = self.critic(
             torch.repeat_interleave(states[None], self._c.num_samples, 0),
             actions
         ).min(-1).values
+        self.critic.requires_grad_(True)
 
         if self._c.debug:
             ent = -log_prob.detach().sum(-1).mean()
             self.callback.add_scalar('train/actor_entropy', ent, self._step)
             self.callback.add_scalar('train/alpha', alpha.detach().mean(), self._step)
-        
+
         actor_loss = torch.mean((alpha.detach() * log_prob).sum(-1) - q_values, 0)
-        actor_loss = self._sequence_discount(actor_loss)*actor_loss
+        actor_loss = self._sequence_discount(actor_loss) * actor_loss
         dual_loss = - alpha * (log_prob.detach() + self._c.target_ent_per_dim)
         return actor_loss.mean(), dual_loss.mean()
 
@@ -170,7 +179,7 @@ class RSAC(nn.Module):
                 models.LayerNormTanhEmbedding(frames_stack * emb, emb)
             )
             self.decoder = nn.Sequential(
-                nn.Linear(emb, frames_stack*emb),
+                nn.Linear(emb, frames_stack * emb),
                 nn.Unflatten(-1, (frames_stack, emb)),
                 frame_decoder
             )
@@ -179,7 +188,7 @@ class RSAC(nn.Module):
 
         self._log_alpha = nn.Parameter(torch.full((self.act_dim,), self._c.init_log_alpha))
 
-        self._target_encoder, self._target_actor, self._target_critic =\
+        self._target_encoder, self._target_actor, self._target_critic = \
             utils.make_targets(self.encoder, self.actor, self.critic)
 
         self._rl_params = utils.make_param_group(self.critic, self.actor)

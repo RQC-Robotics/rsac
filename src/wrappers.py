@@ -158,6 +158,7 @@ class PixelsWrapper(Wrapper):
             obs += (rgb - .5,)
         if 'd' in self.mode:
             depth = self.physics.render(depth=True, **self.render_kwargs)
+            depth = np.where(depth > 10., 0., depth)  # truncate depth
             obs += (depth[..., np.newaxis],)
         if 'rgb' not in self.mode and 'g' in self.mode:
             g = rgb @ self._gs_coef

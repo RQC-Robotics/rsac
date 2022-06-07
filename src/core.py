@@ -26,29 +26,35 @@ class RLAlg:
             self.buffer.add(tr)
             self.interactions_count += self.config.action_repeat * len(tr['actions'])
 
-            dl = DataLoader(self.buffer, batch_size=self.config.batch_size, drop_last=True)
-            self.agent.train()
             training_steps = \
-                self.config.spi*len(tr['actions']) // (self.config.batch_size*self.config.seq_len)
-            
-            for i, tr in enumerate(dl):
-                if i == training_steps:
-                    break
-                obs, actions, rewards, log_probs = map(
-                    lambda k: tr[k].to(self.agent.device).transpose(0, 1),
-                    ('observations', 'actions', 'rewards', 'log_probs')
-                )
-                self.agent.step(obs, actions, rewards, log_probs)
+                self.config.spi * len(tr['actions']) // (
+                            self.config.batch_size * self.config.seq_len)
 
-            if self.interactions_count % self.config.eval_freq == 0:
-                self.agent.eval()
-                scores = [utils.simulate(self.env, self.policy, False)['rewards'].sum()
-                          for _ in range(10)]
-                self.callback.add_scalar('test/eval_reward', np.mean(scores),
-                                         self.interactions_count)
-                self.callback.add_scalar('test/eval_std', np.std(scores), self.interactions_count)
-                
-                self.save()
+            dl = DataLoader(
+                self.buffer.sample_subset(training_steps),
+                batch_size=self.config.batch_size,
+                num_workers=8,
+                prefetch_factor=4,
+                drop_last=True
+            )
+
+            self.agent.train()
+            for tr in dl:
+                obs, actions, rewards, done_flags, log_probs = map(
+                    lambda k: tr[k].to(self.agent.device).transpose(0, 1),
+                    ('observations', 'actions', 'rewards', 'done_flags', 'log_probs')
+                )
+                self.agent.step(obs, actions, rewards, done_flags, log_probs)
+
+        if self.interactions_count % self.config.eval_freq == 0:
+            self.agent.eval()
+            scores = [utils.simulate(self.env, self.policy, False)['rewards'].sum()
+                      for _ in range(10)]
+            self.callback.add_scalar('test/eval_reward', np.mean(scores),
+                                     self.interactions_count)
+            self.callback.add_scalar('test/eval_std', np.std(scores), self.interactions_count)
+
+            self.save()
 
     def save(self):
         self.config.save(self.task_path / 'config.yml')

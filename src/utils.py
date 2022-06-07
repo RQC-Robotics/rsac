@@ -76,7 +76,7 @@ class TrajectoryBuffer(Dataset):
         self._data.append(trajectory)
 
     def __getitem__(self, idx):
-        tr = random.choice(self._data)
+        tr = self._data[idx]
         start = random.randint(0, len(tr['actions']) - self.seq_len)
         return {k: v[start:start+self.seq_len] for k, v in tr.items()}
 
@@ -84,9 +84,13 @@ class TrajectoryBuffer(Dataset):
         # coef can be estimated as ~ trajectory_len / training_sequence_len
         return 32 * len(self._data)
 
+    def sample_subset(self, size):
+        idx = np.random.randint(0, len(self._data), size=size)
+        return torch.utils.data.Subset(self, idx)
+
 
 class TruncatedTanhTransform(td.transforms.TanhTransform):
-    _lim = 1. - 1e-6
+    _lim = 1. - 3e-7
 
     def _inverse(self, y):
         y = torch.clamp(y, min=-self._lim, max=self._lim)
