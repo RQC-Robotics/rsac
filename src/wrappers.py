@@ -231,7 +231,9 @@ class PointCloudWrapper(Wrapper):
     def _to_fixed_number(self, pc):
         if self.pn_number:
             n = len(pc)
-            if n <= self.pn_number:
+            if n == 0:
+                pc = np.zeros((1, 3))
+            elif n <= self.pn_number:
                 pc = np.pad(pc, ((0, self.pn_number - n), (0, 0)), mode='edge')
             else:
                 pc = np.random.permutation(pc)[:self.pn_number]
