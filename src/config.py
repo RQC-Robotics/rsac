@@ -34,7 +34,6 @@ class Config(BaseConfig):
     # algo
     discount: float = .99
     disclam: float = 1.
-    num_samples: int = 4
     action_repeat: int = 2
     frames_stack: int = 3
     init_log_alpha: float = -2.
@@ -62,7 +61,7 @@ class Config(BaseConfig):
     max_grad: float = 20.
 
     total_steps: int = 2*10**6
-    spi: int = 128
+    spi: int = 32
     seq_len: int = 16
     batch_size: int = 16
     eval_freq: int = 20000
@@ -74,4 +73,4 @@ class Config(BaseConfig):
     logdir: str = 'logdir'
     device: str = 'cuda'
     observe: str = 'point_cloud'
-    debug: bool = False
+    debug: bool = True

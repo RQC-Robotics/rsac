@@ -63,24 +63,22 @@ class RSAC(nn.Module):
                          alpha):
         with torch.no_grad():
             target_dist = self._target_actor(target_states)
-            sampled_actions = target_dist.sample([self._c.num_samples])
+            sampled_actions = target_dist.sample()
             sampled_log_probs = target_dist.log_prob(sampled_actions)
 
             q_values = self._target_critic(
-                torch.repeat_interleave(target_states[None], self._c.num_samples, 0),
-                sampled_actions).min(-1, keepdim=True).values
+                target_states, sampled_actions).min(-1, keepdim=True).values
 
-            soft_values = torch.mean(q_values - (alpha * sampled_log_probs).sum(-1, keepdim=True),
-                                     0)
-            target_q_values = self._target_critic(target_states,
-                                                  actions).min(-1, keepdim=True).values
+            soft_values = q_values - (alpha * sampled_log_probs).sum(-1, keepdim=True)
+            target_q_values = self._target_critic(
+                target_states, actions).min(-1, keepdim=True).values
 
             log_probs = target_dist.log_prob(actions).sum(-1, keepdim=True)
             cs = torch.minimum(torch.tensor(1.), (log_probs - behaviour_log_probs).exp())
             dones = dones.float()
             deltas = rewards + self._c.discount * (1. - dones) * soft_values.roll(-1, 0) \
                      - target_q_values
-            # The bootstrapped value is known(=0) if last transition is terminal
+            # Bootstrapped value is known(=0) if the last transition is terminal
             #   so we can use it in Q-value update, otherwise mask it.
             deltas[-1] *= dones[-1]
             deltas = utils.retrace(deltas, cs, self._c.discount, self._c.disclam)
@@ -100,14 +98,11 @@ class RSAC(nn.Module):
 
     def _policy_improvement(self, states, alpha):
         dist = self.actor(states)
-        actions = dist.rsample([self._c.num_samples])
+        actions = dist.rsample()
         log_prob = dist.log_prob(actions)
 
         self.critic.requires_grad_(False)
-        q_values = self.critic(
-            torch.repeat_interleave(states[None], self._c.num_samples, 0),
-            actions
-        ).min(-1).values
+        q_values = self.critic(states, actions).min(-1).values
         self.critic.requires_grad_(True)
 
         if self._c.debug:
@@ -115,7 +110,7 @@ class RSAC(nn.Module):
             self.callback.add_scalar('train/actor_entropy', ent, self._step)
             self.callback.add_scalar('train/alpha', alpha.detach().mean(), self._step)
 
-        actor_loss = torch.mean((alpha.detach() * log_prob).sum(-1) - q_values, 0)
+        actor_loss = (alpha.detach() * log_prob).sum(-1) - q_values
         actor_loss = self._sequence_discount(actor_loss) * actor_loss
         dual_loss = - alpha * (log_prob.detach() + self._c.target_ent_per_dim)
         return actor_loss.mean(), dual_loss.mean()

@@ -26,17 +26,12 @@ class RLAlg:
             self.buffer.add(tr)
             self.interactions_count += self.config.action_repeat * len(tr['actions'])
 
-            training_steps = \
-                self.config.spi * len(tr['actions']) // (
-                            self.config.batch_size * self.config.seq_len)
-
             dl = DataLoader(
-                self.buffer.sample_subset(training_steps),
+                self.buffer.sample_subset(self.config.spi * len(tr['actions'])),
                 batch_size=self.config.batch_size,
                 drop_last=True
             )
 
-            self.agent.train()
             for tr in dl:
                 obs, actions, rewards, done_flags, log_probs = map(
                     lambda k: tr[k].to(self.agent.device).transpose(0, 1),
@@ -45,7 +40,6 @@ class RLAlg:
                 self.agent.step(obs, actions, rewards, done_flags, log_probs)
 
             if self.interactions_count % self.config.eval_freq == 0:
-                self.agent.eval()
                 scores = [utils.simulate(self.env, self.policy, False)['rewards'].sum()
                           for _ in range(10)]
                 self.callback.add_scalar('test/eval_reward', np.mean(scores),
