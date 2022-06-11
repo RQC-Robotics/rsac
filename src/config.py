@@ -58,10 +58,10 @@ class Config(BaseConfig):
     critic_tau: float = .995
     actor_tau: float = .995
     encoder_tau: float = .995
-    max_grad: float = 20.
+    max_grad: float = 10.
 
     total_steps: int = 2*10**6
-    spi: int = 32
+    spi: int = 256
     seq_len: int = 16
     batch_size: int = 16
     eval_freq: int = 20000

@@ -27,7 +27,9 @@ class RLAlg:
             self.interactions_count += self.config.action_repeat * len(tr['actions'])
 
             dl = DataLoader(
-                self.buffer.sample_subset(self.config.spi * len(tr['actions'])),
+                self.buffer.sample_subset(
+                    self.config.spi * len(tr['actions']) // self.config.seq_len
+                ),
                 batch_size=self.config.batch_size,
                 drop_last=True
             )
