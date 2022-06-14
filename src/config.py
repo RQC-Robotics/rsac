@@ -35,7 +35,7 @@ class Config(BaseConfig):
     discount: float = .99
     disclam: float = 1.
     action_repeat: int = 2
-    init_log_alpha: float = -2.
+    init_log_alpha: float = -4.
     target_ent_per_dim: float = -1.5
 
     # architecture
@@ -47,7 +47,7 @@ class Config(BaseConfig):
 
     # PointNet
     pn_number: int = 100
-    pn_layers: tuple = (64, 64)
+    pn_layers: tuple = (256, 256)
     downsample: int = 3
 
     # train
@@ -61,7 +61,7 @@ class Config(BaseConfig):
     max_grad: float = 20.
 
     total_steps: int = 4*10**6
-    spi: int = 256
+    spi: int = 128
     seq_len: int = 16
     batch_size: int = 16
     eval_freq: int = 20000
