@@ -177,14 +177,15 @@ class PixelsWrapper(Wrapper):
 
 class PointCloudWrapper(Wrapper):
     def __init__(self, env, pn_number: Optional[int] = 1000, render_kwargs=None,
-                 static_camera=False, as_pixels=False, downsample=1):
+                 static_camera=False, as_pixels=False, downsample=1, apply_segmentation=True):
         super().__init__(env)
         self.render_kwargs = render_kwargs or dict(camera_id=0, height=84, width=84)
         assert all(map(lambda k: k in self.render_kwargs, ('camera_id', 'height', 'width')))
         self.pn_number = pn_number
 
         self.scene_option = wrapper.MjvOption()
-        self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0
+        if apply_segmentation:
+            self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0
 
         self.static_camera = static_camera
         self.as_pixels = as_pixels
