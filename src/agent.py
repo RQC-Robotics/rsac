@@ -24,7 +24,8 @@ class RSAC(nn.Module):
         if training:
             action = dist.sample()
         else:
-            action = dist.sample([100]).mean(0)
+            action = torch.tanh(dist.base_dist.mean)
+
         log_prob = dist.log_prob(action).sum(-1)
         return action, log_prob
 

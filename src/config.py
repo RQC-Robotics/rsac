@@ -36,8 +36,8 @@ class Config(BaseConfig):
     disclam: float = 1.
     action_repeat: int = 2
     frames_stack: int = 3
-    init_log_alpha: float = -2.
-    target_ent_per_dim: float = -1.
+    init_log_alpha: float = -4.
+    target_ent_per_dim: float = -1.5
 
     # architecture
     critic_layers: tuple = (256, 256)
@@ -47,7 +47,7 @@ class Config(BaseConfig):
 
     # PointNet
     pn_number: int = 100
-    pn_layers: tuple = (256, 128, 64)
+    pn_layers: tuple = (256, 256)
     downsample: int = 3
 
     # train
@@ -58,10 +58,10 @@ class Config(BaseConfig):
     critic_tau: float = .995
     actor_tau: float = .995
     encoder_tau: float = .995
-    max_grad: float = 10.
+    max_grad: float = 20.
 
     total_steps: int = 4*10**6
-    spi: int = 256
+    spi: int = 128
     seq_len: int = 16
     batch_size: int = 16
     eval_freq: int = 20000

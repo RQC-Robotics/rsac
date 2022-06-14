@@ -47,7 +47,7 @@ class RLAlg:
                 self.callback.add_scalar('test/eval_reward', np.mean(scores),
                                          self.interactions_count)
                 self.callback.add_scalar('test/eval_std', np.std(scores), self.interactions_count)
-    
+
                 self.save()
 
     def save(self):

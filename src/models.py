@@ -31,18 +31,20 @@ class Critic(nn.Module):
 
 
 class Actor(nn.Module):
-    def __init__(self, in_features, out_features, layers, mean_scale=1, init_std=1.):
+    def __init__(self, in_features, out_features, layers, mean_scale=5.):
         super().__init__()
         self.mean_scale = mean_scale
-        self.mlp = build_mlp(in_features, *layers, 2*out_features)
-        self.init_std = torch.log(torch.tensor(init_std).exp() - 1.)
+        self.mlp = build_mlp(in_features, *layers)
+        self.loc = nn.Linear(layers[-1], out_features)
+        self.scale = nn.Linear(layers[-1], out_features)
 
     def forward(self, x):
         x = self.mlp(x)
-        mu, std = x.chunk(2, -1)
+        mu = self.loc(x)
+        std = self.scale(x)
         mu = self.mean_scale * torch.tanh(mu / self.mean_scale)
         std = torch.maximum(std, torch.full_like(std, -18.))
-        std = F.softplus(std + self.init_std) + 1e-3
+        std = F.softplus(std) + 1e-3
         return self.get_dist(mu, std)
 
     @staticmethod
@@ -94,7 +96,7 @@ class PointCloudEncoder(nn.Module):
         self.selected_layers = features_from_layers
 
         self.fc_size = layers[-1] * (1 + sum([layers[i] for i in self.selected_layers]))
-        self.fc = LayerNormTanhEmbedding(self.fc_size, out_features)
+        self.fc = nn.Linear(self.fc_size, out_features)
 
     def forward(self, x):
         features = [x]
@@ -108,7 +110,8 @@ class PointCloudEncoder(nn.Module):
                 [self._gather(features[ind], indices) for ind in self.selected_layers],
                 -1)
             values = torch.cat((values.unsqueeze(-1), selected_features), -1).flatten(-2)
-        return self.fc(values)
+        values = self.fc(values)
+        return torch.tanh(values)
 
     @staticmethod
     def _gather(features, indices):
