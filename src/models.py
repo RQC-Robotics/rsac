@@ -56,7 +56,7 @@ class Actor(nn.Module):
 
 
 class PointCloudDecoder(nn.Module):
-    def __init__(self, in_features, pn_number, layers, act=nn.ReLU):
+    def __init__(self, in_features, pn_number, layers, act=nn.ELU):
         super().__init__()
 
         layers = layers + (3,)
@@ -77,7 +77,7 @@ class PointCloudDecoder(nn.Module):
 
 class PointCloudEncoder(nn.Module):
     """PointNet with an option to process global features of selected points."""
-    def __init__(self, out_features, layers, act=nn.ReLU, features_from_layers=(0,)):
+    def __init__(self, out_features, layers, act=nn.ELU, features_from_layers=(0,)):
         super().__init__()
 
         layers = (3,) + layers
@@ -117,7 +117,7 @@ class PointCloudEncoder(nn.Module):
 
 
 class PixelsEncoder(nn.Module):
-    def __init__(self, in_channels=3, out_features=64, depth=32, act=nn.ReLU):
+    def __init__(self, in_channels=3, out_features=64, depth=32, act=nn.ELU):
         super().__init__()
         self.convs = nn.Sequential(
             nn.Conv2d(in_channels, depth, 3, 2),
@@ -143,7 +143,7 @@ class PixelsEncoder(nn.Module):
 
 
 class PixelsDecoder(nn.Module):
-    def __init__(self, in_features, out_channels=3, depth=32, act=nn.ReLU):
+    def __init__(self, in_features, out_channels=3, depth=32, act=nn.ELU):
         super().__init__()
         dim = 39 # 39 - for two conv layers, 35 for 4 layers
         self.out_channels = out_channels

@@ -60,7 +60,7 @@ class Config(BaseConfig):
     encoder_tau: float = .995
     max_grad: float = 10.
 
-    total_steps: int = 2*10**6
+    total_steps: int = 4*10**6
     spi: int = 256
     seq_len: int = 16
     batch_size: int = 16

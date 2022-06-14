@@ -33,7 +33,7 @@ class RSAC(nn.Module):
         target_states = self._target_encoder(obs)
 
         alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -18.))
-        alpha = F.softplus(alpha) + 1e-7
+        alpha = F.softplus(alpha) + 1e-8
 
         rl_loss = self._policy_learning(states, actions, rewards, dones, log_probs,
                                         target_states, alpha.detach())
