@@ -36,7 +36,7 @@ class Config(BaseConfig):
     disclam: float = 1.
     action_repeat: int = 2
     frames_stack: int = 3
-    init_log_alpha: float = -4.
+    init_log_alpha: float = -3.
     target_ent_per_dim: float = -1.5
 
     # architecture

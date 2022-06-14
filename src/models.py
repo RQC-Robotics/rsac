@@ -39,7 +39,7 @@ class Actor(nn.Module):
         self.scale = nn.Linear(layers[-1], out_features)
 
     def forward(self, x):
-        x = self.mlp(x)
+        x = F.elu(self.mlp(x))
         mu = self.loc(x)
         std = self.scale(x)
         mu = self.mean_scale * torch.tanh(mu / self.mean_scale)
