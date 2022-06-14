@@ -89,8 +89,7 @@ class TrajectoryBuffer(Dataset):
         return {k: v[start:start+self.seq_len] for k, v in tr.items()}
 
     def __len__(self):
-        # coef can be estimated as ~ trajectory_len / training_sequence_len
-        return 32 * len(self._data)
+        return len(self._data)
 
     def sample_subset(self, size):
         idx = np.random.randint(0, len(self._data), size=size)

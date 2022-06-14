@@ -1,6 +1,6 @@
 import torch
 from torch.nn.utils import clip_grad_norm_
-# from pytorch3d.loss import chamfer_distance
+from pytorch3d.loss import chamfer_distance
 from . import models, utils, wrappers
 td = torch.distributions
 nn = torch.nn
@@ -34,14 +34,13 @@ class RSAC(nn.Module):
         return action, log_prob, state
 
     def step(self, obs, actions, rewards, dones, log_probs, hidden_states):
-        import pdb; pdb.set_trace()
         # burn_in
         init_hidden = hidden_states[0]
         if self._c.burn_in > 0:
             target_obs_emb = self._target_encoder(obs[:self._c.burn_in])
             init_hidden = self.cell_roll(self._target_cell, target_obs_emb, init_hidden)[-1]
-            obs, actions, rewards, log_probs = map(lambda t: t[self._c.burn_in:],
-                                                   (obs, actions, rewards, log_probs))
+            obs, actions, rewards, dones, log_probs = map(lambda t: t[self._c.burn_in:],
+                                                   (obs, actions, rewards, dones, log_probs))
 
         obs_emb = self.encoder(obs)
         target_obs_emb = self._target_encoder(obs)
@@ -49,7 +48,7 @@ class RSAC(nn.Module):
         target_states = self.cell_roll(self._target_cell, target_obs_emb, init_hidden)
 
         alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -18.))
-        alpha = F.softplus(alpha) + 1e-7
+        alpha = F.softplus(alpha) + 1e-8
 
         rl_loss = self._policy_learning(states, actions, rewards, dones, log_probs,
                                         target_states, alpha.detach())
