@@ -1,3 +1,4 @@
+from typing import Optional
 import numpy as np
 from collections import defaultdict, deque
 from dm_env import specs
@@ -86,9 +87,10 @@ class ActionRepeat(Wrapper):
 
 
 class FrameStack(Wrapper):
-    def __init__(self, env, frame_number: int = 1):
+    def __init__(self, env, num_frames: int = 1, stack=True):
         super().__init__(env)
-        self.fn = frame_number
+        self.fn = num_frames
+        self.stack = stack
         self._state = None
 
     def reset(self):
@@ -102,12 +104,17 @@ class FrameStack(Wrapper):
         return self.observation(None), r, d
 
     def observation(self, timestamp):
-        return np.stack(self._state)
+        if self.stack:
+            return np.stack(self._state)
+        else:
+            return np.concatenate(self._state)
 
     def observation_spec(self):
         spec = self.env.observation_spec()
+        shape = spec.shape
+        shape = (self.fn, *shape) if self.stack else (self.fn * shape[0], *shape[1:])
         return spec.replace(
-            shape=(self.fn, *spec.shape),
+            shape=shape,
             name=f'{self.fn}_stacked_{spec.name}'
         )
 
@@ -151,6 +158,7 @@ class PixelsWrapper(Wrapper):
             obs += (rgb - .5,)
         if 'd' in self.mode:
             depth = self.physics.render(depth=True, **self.render_kwargs)
+            depth = np.where(depth > 10., 0., depth)  # truncate depth
             obs += (depth[..., np.newaxis],)
         if 'rgb' not in self.mode and 'g' in self.mode:
             g = rgb @ self._gs_coef
@@ -168,10 +176,10 @@ class PixelsWrapper(Wrapper):
 
 
 class PointCloudWrapper(Wrapper):
-    def __init__(self, env, pn_number=1000, render_kwargs=None,
+    def __init__(self, env, pn_number: Optional[int] = 1000, render_kwargs=None,
                  static_camera=False, as_pixels=False, downsample=1):
         super().__init__(env)
-        self.render_kwargs = render_kwargs or dict(camera_id=0, height=240, width=320)
+        self.render_kwargs = render_kwargs or dict(camera_id=0, height=84, width=84)
         assert all(map(lambda k: k in self.render_kwargs, ('camera_id', 'height', 'width')))
         self.pn_number = pn_number
 
@@ -221,20 +229,24 @@ class PointCloudWrapper(Wrapper):
         return (obj_type != -1).flatten()
 
     def _to_fixed_number(self, pc):
-        n = len(pc)
-        if n < self.pn_number:
-            return np.pad(pc, ((0, self.pn_number - n), (0, 0)), mode='edge')
-        else:
-            return np.random.permutation(pc)[:self.pn_number]
+        if self.pn_number:
+            n = len(pc)
+            if n == 0:
+                pc = np.zeros((1, 3))
+            elif n <= self.pn_number:
+                pc = np.pad(pc, ((0, self.pn_number - n), (0, 0)), mode='edge')
+            else:
+                pc = np.random.permutation(pc)[:self.pn_number]
+        return pc
 
     def _get_point_cloud(self, depth_map):
         cam_id = self.render_kwargs['camera_id']
         inv_mat = self._inverse_matrix if self.static_camera else self.inverse_matrix()
-        dot_product = lambda x, y: np.einsum('ij, jhw->hwi', x, y)
+        def dot_product(x, y): return np.einsum('ij, jhw->hwi', x, y)
 
         if not self.static_camera or self._partial_sum is None:
-            width = self.render_kwargs.get('width', 320)
-            height = self.render_kwargs.get('height', 240)
+            width = self.render_kwargs['width']
+            height = self.render_kwargs['height']
             grid = 1. + np.mgrid[:height, :width]
             self._partial_sum = dot_product(inv_mat[:, :-1], grid)
 

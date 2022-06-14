@@ -77,10 +77,10 @@ class PointCloudDecoder(nn.Module):
 
 class PointCloudEncoder(nn.Module):
     """PointNet with an option to process global features of selected points."""
-    def __init__(self, in_features, out_features, layers, act=nn.ReLU, features_from_layers=(0,)):
+    def __init__(self, out_features, layers, act=nn.ReLU, features_from_layers=(0,)):
         super().__init__()
 
-        layers = (in_features,) + layers
+        layers = (3,) + layers
         self.layers = nn.ModuleList()
         for i in range(len(layers) - 1):
             block = nn.Sequential(
@@ -146,6 +146,7 @@ class PixelsDecoder(nn.Module):
     def __init__(self, in_features, out_channels=3, depth=32, act=nn.ReLU):
         super().__init__()
         dim = 39 # 39 - for two conv layers, 35 for 4 layers
+        self.out_channels = out_channels
         self.deconvs = nn.Sequential(
             nn.Linear(in_features, depth*dim**2),
             act(),
@@ -163,5 +164,5 @@ class PixelsDecoder(nn.Module):
         prefix_shape = x.shape[:-1]
         x = x.flatten(0, len(prefix_shape)-1)
         img = self.deconvs(x)
-        img = img.reshape(*prefix_shape, 3, 84, 84)
+        img = img.reshape(*prefix_shape, self.out_channels, 84, 84)
         return img
