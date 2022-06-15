@@ -100,6 +100,7 @@ class RSAC(nn.Module):
 
         q_values = self.critic(states, actions)
         loss = (q_values - target_q_values).pow(2)
+        loss = loss[:-1]  # to exclude dones in dm_control
         loss = self._sequence_discount(loss) * loss
 
         if self._c.debug:

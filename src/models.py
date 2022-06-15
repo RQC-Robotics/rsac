@@ -44,7 +44,7 @@ class Actor(nn.Module):
         std = self.scale(x)
         mu = self.mean_scale * torch.tanh(mu / self.mean_scale)
         std = torch.maximum(std, torch.full_like(std, -18.))
-        std = F.softplus(std) + 1e-4
+        std = F.softplus(std) + 1e-3
         return self.get_dist(mu, std)
 
     @staticmethod

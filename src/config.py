@@ -58,15 +58,15 @@ class Config(BaseConfig):
     critic_tau: float = .995
     actor_tau: float = .995
     encoder_tau: float = .995
-    max_grad: float = 20.
+    max_grad: float = 40.
 
     total_steps: int = 4*10**6
-    spi: int = 128
+    spi: int = 256
     seq_len: int = 16
     batch_size: int = 16
     eval_freq: int = 20000
     buffer_size: int = 1000
-    burn_in: int = 10
+    burn_in: int = 5
 
     # task
     task: str = 'walker_stand'
