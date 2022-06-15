@@ -80,15 +80,15 @@ class RSAC(nn.Module):
         with torch.no_grad():
             target_dist = self._target_actor(target_states)
             sampled_actions = target_dist.sample([self._c.num_samples])
-            sampled_log_probs = target_dist.log_prob(sampled_actions).unsqueeze(-1)
+            sampled_log_probs = target_dist.log_prob(sampled_actions)
+
             q_values = self._target_critic(
                 torch.repeat_interleave(target_states[None], self._c.num_samples, 0),
                 sampled_actions
             ).min(-1, keepdim=True).values
 
             soft_values = torch.mean(
-                q_values - (alpha * sampled_log_probs).sum(-1, keepdim=True), 0
-            )
+                q_values - (alpha * sampled_log_probs).sum(-1, keepdim=True), 0)
             target_q_values = self._target_critic(
                 target_states, actions).min(-1, keepdim=True).values
 
@@ -105,7 +105,7 @@ class RSAC(nn.Module):
 
         q_values = self.critic(states, actions)
         loss = (q_values - target_q_values).pow(2)
-        # Actually we mask last_transition in continuous control tasks.
+        # Actually we mask last_transition in continuous control tasks anyway.
         loss = loss[:-1]
         loss = self._sequence_discount(loss) * loss
 

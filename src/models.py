@@ -34,7 +34,7 @@ class Actor(nn.Module):
     def __init__(self, in_features, out_features, layers, mean_scale=5.):
         super().__init__()
         self.mean_scale = mean_scale
-        self.mlp = build_mlp(in_features, *layers, act_last=True)
+        self.mlp = build_mlp(in_features, *layers, act=nn.Tanh, act_last=True)
         self.loc = nn.Linear(layers[-1], out_features)
         self.scale = nn.Linear(layers[-1], out_features)
 

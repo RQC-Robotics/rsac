@@ -34,7 +34,7 @@ class Config(BaseConfig):
     # algo
     discount: float = .99
     disclam: float = 1.
-    num_samples: int = 16
+    num_samples: int = 4
     action_repeat: int = 2
     init_log_alpha: float = -2.
     target_ent_per_dim: float = -1.
