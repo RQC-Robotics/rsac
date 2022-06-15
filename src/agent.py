@@ -39,8 +39,10 @@ class RSAC(nn.Module):
         if self._c.burn_in > 0:
             target_obs_emb = self._target_encoder(obs[:self._c.burn_in])
             init_hidden = self.cell_roll(self._target_cell, target_obs_emb, init_hidden)[-1]
-            obs, actions, rewards, dones, log_probs = map(lambda t: t[self._c.burn_in:],
-                                                   (obs, actions, rewards, dones, log_probs))
+            obs, actions, rewards, dones, log_probs = map(
+                lambda t: t[self._c.burn_in:],
+                (obs, actions, rewards, dones, log_probs)
+            )
 
         obs_emb = self.encoder(obs)
         target_obs_emb = self._target_encoder(obs)
@@ -77,13 +79,16 @@ class RSAC(nn.Module):
     def _policy_learning(self, states, actions, rewards, dones, behaviour_log_probs, target_states, alpha):
         with torch.no_grad():
             target_dist = self._target_actor(target_states)
-            sampled_actions = target_dist.sample()
-            sampled_log_probs = target_dist.log_prob(sampled_actions)
-
+            sampled_actions = target_dist.sample([self._c.num_samples])
+            sampled_log_probs = target_dist.log_prob(sampled_actions).unsqueeze(-1)
             q_values = self._target_critic(
-                target_states, sampled_actions).min(-1, keepdim=True).values
+                torch.repeat_interleave(target_states[None], self._c.num_samples, 0),
+                sampled_actions
+            ).min(-1, keepdim=True).values
 
-            soft_values = q_values - (alpha * sampled_log_probs).sum(-1, keepdim=True)
+            soft_values = torch.mean(
+                q_values - (alpha * sampled_log_probs).sum(-1, keepdim=True), 0
+            )
             target_q_values = self._target_critic(
                 target_states, actions).min(-1, keepdim=True).values
 
@@ -100,6 +105,8 @@ class RSAC(nn.Module):
 
         q_values = self.critic(states, actions)
         loss = (q_values - target_q_values).pow(2)
+        # Actually we mask last_transition in continuous control tasks.
+        loss = loss[:-1]
         loss = self._sequence_discount(loss) * loss
 
         if self._c.debug:
@@ -181,7 +188,7 @@ class RSAC(nn.Module):
         elif self._c.observe == 'point_cloud':
             encoder = models.PointCloudEncoder(emb, layers=self._c.pn_layers,
                                                features_from_layers=())
-            decoder = models.PointCloudDecoder(emb, layers=self._c.pn_layers,
+            decoder = models.PointCloudDecoder(hidden, layers=self._c.pn_layers,
                                                pn_number=self._c.pn_number)
         else:
             raise NotImplementedError

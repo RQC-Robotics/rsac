@@ -34,6 +34,7 @@ class Config(BaseConfig):
     # algo
     discount: float = .99
     disclam: float = 1.
+    num_samples: int = 16
     action_repeat: int = 2
     init_log_alpha: float = -2.
     target_ent_per_dim: float = -1.
@@ -47,7 +48,7 @@ class Config(BaseConfig):
 
     # PointNet
     pn_number: int = 100
-    pn_layers: tuple = (64, 64, 128, 1024)
+    pn_layers: tuple = (64, 128, 256)
     downsample: int = 3
 
     # train
