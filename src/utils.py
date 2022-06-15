@@ -11,12 +11,14 @@ F = nn.functional
 td = torch.distributions
 
 
-def build_mlp(*sizes, act=nn.ELU):
+def build_mlp(*sizes, act=nn.ELU, act_last=False):
     mlp = []
     for i in range(1, len(sizes)):
         mlp.append(nn.Linear(sizes[i-1], sizes[i]))
         mlp.append(act())
-    return nn.Sequential(*mlp[:-1])
+    if not act_last:
+        mlp = mlp[:-1]
+    return nn.Sequential(*mlp)
 
 
 def grads_sum(model):
