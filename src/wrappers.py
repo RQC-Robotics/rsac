@@ -1,4 +1,3 @@
-from typing import Optional
 import numpy as np
 from collections import defaultdict, deque
 from dm_env import specs
@@ -176,7 +175,7 @@ class PixelsWrapper(Wrapper):
 
 
 class PointCloudWrapper(Wrapper):
-    def __init__(self, env, pn_number: Optional[int] = 1000, render_kwargs=None,
+    def __init__(self, env, pn_number: int = 1000, render_kwargs=None,
                  static_camera=False, as_pixels=False, downsample=1, apply_segmentation=True):
         super().__init__(env)
         self.render_kwargs = render_kwargs or dict(camera_id=0, height=84, width=84)

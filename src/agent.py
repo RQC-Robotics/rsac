@@ -21,9 +21,9 @@ class RSAC(nn.Module):
         if not torch.is_tensor(state):
             state = torch.zeros((obs.size(0), self._c.hidden_dim), device=self.device)
 
-        obs = self._target_encoder(obs)
-        state = self._target_cell(obs, state)
-        dist = self._target_actor(state)
+        obs = self.encoder(obs)
+        state = self.cell(obs, state)
+        dist = self.actor(state)
 
         if training:
             action = dist.sample()
@@ -52,10 +52,19 @@ class RSAC(nn.Module):
         alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -18.))
         alpha = F.softplus(alpha) + 1e-8
 
-        rl_loss = self._policy_learning(states, actions, rewards, dones, log_probs,
-                                        target_states, alpha.detach())
+        online_policy = self.actor(states.detach())
+        sampled_actions = online_policy.rsample([self._c.num_samples])
+        sampled_log_probs = online_policy.log_prob(sampled_actions)
+
+        rl_loss = self._policy_learning(
+            states, actions, rewards, dones, log_probs, target_states,
+            online_policy, sampled_actions, sampled_log_probs, alpha
+        )
+
         auxiliary_loss = self._auxiliary_loss(obs, states)
-        actor_loss, dual_loss = self._policy_improvement(states.detach(), alpha)
+
+        actor_loss, dual_loss = self._policy_improvement(
+            states.detach(), sampled_actions, sampled_log_probs, alpha)
         model_loss = rl_loss + auxiliary_loss + actor_loss + dual_loss
 
         self.optim.zero_grad()
@@ -76,12 +85,20 @@ class RSAC(nn.Module):
         self._update_targets()
         self._step += 1
 
-    def _policy_learning(self, states, actions, rewards, dones, behaviour_log_probs, target_states, alpha):
+    def _policy_learning(
+            self,
+            states,
+            actions,
+            rewards,
+            dones,
+            behaviour_log_probs,
+            target_states,
+            online_policy,
+            sampled_actions,
+            sampled_log_probs,
+            alpha
+    ):
         with torch.no_grad():
-            target_dist = self._target_actor(target_states)
-            sampled_actions = target_dist.sample([self._c.num_samples])
-            sampled_log_probs = target_dist.log_prob(sampled_actions)
-
             q_values = self._target_critic(
                 torch.repeat_interleave(target_states[None], self._c.num_samples, 0),
                 sampled_actions
@@ -92,7 +109,7 @@ class RSAC(nn.Module):
             target_q_values = self._target_critic(
                 target_states, actions).min(-1, keepdim=True).values
 
-            log_probs = target_dist.log_prob(actions).sum(-1, keepdim=True)
+            log_probs = online_policy.log_prob(actions).sum(-1, keepdim=True)
             cs = torch.minimum(torch.tensor(1.), (log_probs - behaviour_log_probs).exp())
             dones = dones.float()
             deltas = rewards + self._c.discount * (1. - dones) * soft_values.roll(-1, 0) \
@@ -105,7 +122,7 @@ class RSAC(nn.Module):
 
         q_values = self.critic(states, actions)
         loss = (q_values - target_q_values).pow(2)
-        # Actually we mask last_transition in continuous control tasks anyway.
+        # Actually, in continuous control ONLY it is proper to mask terminals.
         loss = loss[:-1]
         loss = self._sequence_discount(loss) * loss
 
@@ -117,23 +134,29 @@ class RSAC(nn.Module):
             self.callback.add_scalar('train/mean_deltas', deltas.detach().mean(), self._step)
         return loss.mean()
 
-    def _policy_improvement(self, states, alpha):
-        dist = self.actor(states)
-        actions = dist.rsample()
-        log_prob = dist.log_prob(actions)
-
+    def _policy_improvement(
+            self,
+            states,
+            actions,
+            log_probs,
+            alpha
+    ):
         self.critic.requires_grad_(False)
-        q_values = self.critic(states, actions).min(-1).values
+        q_values = self.critic(
+            torch.repeat_interleave(states[None], self._c.num_samples, 0),
+            actions
+        ).min(-1).values
         self.critic.requires_grad_(True)
 
         if self._c.debug:
-            ent = -log_prob.detach().sum(-1).mean()
+            ent = -log_probs.detach().sum(-1).mean()
             self.callback.add_scalar('train/actor_entropy', ent, self._step)
             self.callback.add_scalar('train/alpha', alpha.detach().mean(), self._step)
 
-        actor_loss = (alpha.detach() * log_prob).sum(-1) - q_values
+        actor_loss = torch.mean(
+            (alpha.detach() * log_probs).sum(-1) - q_values, 0)
         actor_loss = self._sequence_discount(actor_loss) * actor_loss
-        dual_loss = - alpha * (log_prob.detach() + self._c.target_ent_per_dim)
+        dual_loss = - alpha * (log_probs.detach() + self._c.target_ent_per_dim)
         return actor_loss.mean(), dual_loss.mean()
 
     def _auxiliary_loss(self, obs, states_emb):
@@ -198,8 +221,8 @@ class RSAC(nn.Module):
 
         self._log_alpha = nn.Parameter(torch.full((act_dim,), self._c.init_log_alpha))
 
-        self._target_encoder, self._target_actor, self._target_critic, self._target_cell =\
-            utils.make_targets(self.encoder, self.actor, self.critic, self.cell)
+        self._target_encoder, self._target_critic, self._target_cell =\
+            utils.make_targets(self.encoder, self.critic, self.cell)
 
         self._rl_params = utils.make_param_group(self.cell, self.critic, self.actor)
         self._ae_params = utils.make_param_group(self.encoder, self.decoder)
@@ -216,4 +239,3 @@ class RSAC(nn.Module):
         utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
         utils.soft_update(self._target_cell, self.cell, self._c.critic_tau)
         utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
-        utils.soft_update(self._target_actor, self.actor, self._c.actor_tau)
