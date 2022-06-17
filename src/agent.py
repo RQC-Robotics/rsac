@@ -166,16 +166,16 @@ class RSAC(nn.Module):
     def _build(self):
         emb = self._c.obs_emb_dim
         hidden = self._c.hidden_dim
-        self.act_dim = self.env.action_spec().shape[0]
+        act_dim = self.env.action_spec().shape[0]
         obs_spec = self.env.observation_spec()
         self.device = torch.device(self._c.device if torch.cuda.is_available() else 'cpu')
 
         # RL
         self.cell = nn.GRUCell(emb, hidden)
-        self.actor = models.Actor(hidden, self.act_dim, layers=self._c.actor_layers,
+        self.actor = models.Actor(hidden, act_dim, layers=self._c.actor_layers,
                                   mean_scale=self._c.mean_scale)
 
-        self.critic = models.Critic(hidden + self.act_dim, self._c.critic_layers)
+        self.critic = models.Critic(hidden + act_dim, self._c.critic_layers)
 
         # Encoder+decoder
         obs_dim = obs_spec.shape[0]
@@ -196,7 +196,7 @@ class RSAC(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-        self._log_alpha = nn.Parameter(torch.full((self.act_dim,), self._c.init_log_alpha))
+        self._log_alpha = nn.Parameter(torch.full((act_dim,), self._c.init_log_alpha))
 
         self._target_encoder, self._target_actor, self._target_critic, self._target_cell =\
             utils.make_targets(self.encoder, self.actor, self.critic, self.cell)

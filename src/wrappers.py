@@ -243,12 +243,12 @@ class PointCloudWrapper(Wrapper):
     def _get_point_cloud(self, depth_map):
         cam_id = self.render_kwargs['camera_id']
         inv_mat = self._inverse_matrix if self.static_camera else self.inverse_matrix()
-        def dot_product(x, y): return np.einsum('ij, jhw->hwi', x, y)
+        dot_product = lambda x, y: np.einsum('ij, jhw->hwi', x, y)
 
         if not self.static_camera or self._partial_sum is None:
             width = self.render_kwargs['width']
             height = self.render_kwargs['height']
-            grid = 1. + np.mgrid[:height, :width]
+            grid = 1. + np.mgrid[:height, :width] # TODO: somehting is wrong here
             self._partial_sum = dot_product(inv_mat[:, :-1], grid)
 
         residual_sum = dot_product(inv_mat[:, -1:], depth_map[np.newaxis])

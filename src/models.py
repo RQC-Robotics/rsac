@@ -20,9 +20,9 @@ class LayerNormTanhEmbedding(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, in_features, layers):
+    def __init__(self, in_features, layers, act=nn.ELU):
         super().__init__()
-        self.qs = nn.ModuleList([build_mlp(in_features, *layers, 1) for _ in range(2)])
+        self.qs = nn.ModuleList([build_mlp(in_features, *layers, 1, act=act) for _ in range(2)])
 
     def forward(self, obs, action):
         x = torch.cat([obs, action], -1)
@@ -31,10 +31,10 @@ class Critic(nn.Module):
 
 
 class Actor(nn.Module):
-    def __init__(self, in_features, out_features, layers, mean_scale=5.):
+    def __init__(self, in_features, out_features, layers, act=nn.ELU, mean_scale=5.):
         super().__init__()
         self.mean_scale = mean_scale
-        self.mlp = build_mlp(in_features, *layers, act=nn.Tanh, act_last=True)
+        self.mlp = build_mlp(in_features, *layers, act=act, act_last=True)
         self.loc = nn.Linear(layers[-1], out_features)
         self.scale = nn.Linear(layers[-1], out_features)
 

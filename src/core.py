@@ -93,7 +93,8 @@ class RLAlg:
             env = wrappers.PointCloudWrapper(
                 env,
                 pn_number=self.config.pn_number,
-                downsample=self.config.downsample
+                downsample=self.config.downsample,
+                apply_segmentation=False,
             )
         else:
             raise NotImplementedError

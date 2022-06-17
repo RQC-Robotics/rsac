@@ -47,19 +47,19 @@ class Config(BaseConfig):
     mean_scale: float = 5.
 
     # PointNet
-    pn_number: int = 100
+    pn_number: int = 300
     pn_layers: tuple = (64, 128, 256)
-    downsample: int = 3
+    downsample: int = 5
 
     # train
     rl_lr: float = 3e-4
     ae_lr: float = 3e-4
     dual_lr: float = 3e-4
     weight_decay: float = 0.
-    critic_tau: float = .995
-    actor_tau: float = .995
-    encoder_tau: float = .995
-    max_grad: float = 40.
+    critic_tau: float = .95
+    actor_tau: float = .95
+    encoder_tau: float = .95
+    max_grad: float = 20.
 
     total_steps: int = 4*10**6
     spi: int = 256
