@@ -87,7 +87,7 @@ class PointCloudEncoder(nn.Module):
         for i in range(len(layers) - 1):
             block = nn.Sequential(
                 nn.Linear(layers[i], layers[i + 1]),
-                # nn.LayerNorm(layers[i+1]),
+                nn.LayerNorm(layers[i+1]),
                 act(),
             )
             self.layers.append(block)

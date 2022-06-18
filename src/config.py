@@ -34,9 +34,9 @@ class Config(BaseConfig):
     # algo
     discount: float = .99
     disclam: float = 1.
-    num_samples: int = 16
+    num_samples: int = 10
     action_repeat: int = 2
-    init_log_alpha: float = -3.
+    init_log_alpha: float = -2.
     target_ent_per_dim: float = -1.
 
     # architecture
@@ -48,15 +48,15 @@ class Config(BaseConfig):
 
     # PointNet
     pn_number: int = 100
-    pn_layers: tuple = (64, 64, 64)
+    pn_layers: tuple = (64, 128, 256)
     downsample: int = 3
 
     # train
     rl_lr: float = 3e-4
-    ae_lr: float = 3e-4
+    ae_lr: float = 1e-3
     dual_lr: float = 3e-4
     weight_decay: float = 0.
-    critic_tau: float = .95
+    critic_tau: float = .99
     encoder_tau: float = .95
     max_grad: float = 20.
 
