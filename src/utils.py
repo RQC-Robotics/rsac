@@ -99,7 +99,7 @@ class TrajectoryBuffer(Dataset):
 
 
 class TruncatedTanhTransform(td.transforms.TanhTransform):
-    _lim = .9999
+    _lim = .999
 
     def _inverse(self, y):
         y = torch.clamp(y, min=-self._lim, max=self._lim)

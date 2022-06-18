@@ -44,7 +44,7 @@ class Actor(nn.Module):
         std = self.scale(x)
         mu = self.mean_scale * torch.tanh(mu / self.mean_scale)
         std = torch.maximum(std, torch.full_like(std, -18.))
-        std = F.softplus(std) + 1e-3
+        std = F.softplus(std) + 1e-4
         return self.get_dist(mu, std)
 
     @staticmethod
@@ -87,7 +87,7 @@ class PointCloudEncoder(nn.Module):
         for i in range(len(layers) - 1):
             block = nn.Sequential(
                 nn.Linear(layers[i], layers[i + 1]),
-                nn.LayerNorm(layers[i+1]),
+                # nn.LayerNorm(layers[i+1]),
                 act(),
             )
             self.layers.append(block)

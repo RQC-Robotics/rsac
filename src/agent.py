@@ -105,7 +105,7 @@ class RSAC(nn.Module):
             ).min(-1, keepdim=True).values
 
             soft_values = torch.mean(
-                q_values - (alpha * sampled_log_probs).sum(-1, keepdim=True), 0)
+                q_values - alpha * sampled_log_probs.sum(-1, keepdim=True), 0)
             target_q_values = self._target_critic(
                 target_states, actions).min(-1, keepdim=True).values
 
@@ -154,9 +154,9 @@ class RSAC(nn.Module):
             self.callback.add_scalar('train/alpha', alpha.detach().mean(), self._step)
 
         actor_loss = torch.mean(
-            (alpha.detach() * log_probs).sum(-1) - q_values, 0)
+            alpha.detach() * log_probs.sum(-1) - q_values, 0)
         actor_loss = self._sequence_discount(actor_loss) * actor_loss
-        dual_loss = - alpha * (log_probs.detach() + self._c.target_ent_per_dim)
+        dual_loss = - alpha * (log_probs.detach().sum(-1) + self._target_entropy)
         return actor_loss.mean(), dual_loss.mean()
 
     def _auxiliary_loss(self, obs, states_emb):
@@ -219,7 +219,7 @@ class RSAC(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-        self._log_alpha = nn.Parameter(torch.full((act_dim,), self._c.init_log_alpha))
+        self._log_alpha = nn.Parameter(torch.tensor(self._c.init_log_alpha))
 
         self._target_encoder, self._target_critic, self._target_cell =\
             utils.make_targets(self.encoder, self.critic, self.cell)
@@ -232,6 +232,7 @@ class RSAC(nn.Module):
             {'params': self._ae_params, 'lr': self._c.ae_lr, 'weight_decay': self._c.weight_decay},
             {'params': [self._log_alpha], 'lr': self._c.dual_lr}
         ])
+        self._target_entropy = self._c.target_ent_per_dim * act_dim
         self.to(self.device)
 
     @torch.no_grad()

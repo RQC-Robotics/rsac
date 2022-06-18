@@ -94,7 +94,7 @@ class RLAlg:
                 env,
                 pn_number=self.config.pn_number,
                 downsample=self.config.downsample,
-                apply_segmentation=False,
+                apply_segmentation=True,
             )
         else:
             raise NotImplementedError
