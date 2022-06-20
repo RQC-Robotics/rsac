@@ -14,6 +14,7 @@ class RLAlg:
 
         self.config = config
         self.env = self.make_env()
+        utils.set_seed(config.seed)
         self.task_path = pathlib.Path(config.logdir)
         self.callback = SummaryWriter(log_dir=self.task_path)
         self.agent = RSAC(self.env, config, self.callback)
@@ -93,7 +94,7 @@ class RLAlg:
         return alg
 
     def make_env(self):
-        env = utils.make_env(self.config.task)
+        env = utils.make_env(self.config.task, seed=self.config.seed)
         if self.config.observe == 'states':
             env = wrappers.StatesWrapper(env)
         elif self.config.observe in wrappers.PixelsWrapper.channels.keys():

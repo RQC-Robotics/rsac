@@ -36,7 +36,13 @@ def make_env(name, **kwargs):
     if domain == 'ball':
         domain = 'ball_in_cup'
         task = 'catch'
-    return suite.load(domain, task, **kwargs)
+    return suite.load(domain, task, task_kwargs=kwargs)
+
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(0)
 
 
 def simulate(env, policy, training):

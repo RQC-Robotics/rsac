@@ -69,6 +69,7 @@ class Config(BaseConfig):
 
     # task
     task: str = 'walker_stand'
+    seed: int = 0
     aux_loss: str = 'None'
     logdir: str = 'logdir'
     device: str = 'cuda'
