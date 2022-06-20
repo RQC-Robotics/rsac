@@ -8,7 +8,7 @@ import pathlib
 import numpy as np
 import pickle
 
-
+# TODO: N different seeds
 class RLAlg:
     def __init__(self, config):
 
@@ -21,6 +21,15 @@ class RLAlg:
         self.interactions_count = 0
 
     def learn(self):
+        def update_buffer():
+            tr = utils.simulate(self.env, self.policy, True)
+            self.buffer.add(tr)
+            tr_len = len(tr['actions'])
+            self.interactions_count += self.config.action_repeat * seq_len
+            return tr_len
+
+        [update_buffer() for _ in range(10)]
+
         while self.interactions_count < self.config.total_steps:
             tr = utils.simulate(self.env, self.policy, True)
             self.buffer.add(tr)

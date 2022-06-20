@@ -219,24 +219,25 @@ class RSAC(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-        self._log_alpha = nn.Parameter(torch.tensor(self._c.init_log_alpha))
+        init_log_alpha = torch.log(torch.tensor(self._c.init_temperature).exp() - 1.)
+        self._log_alpha = nn.Parameter(init_log_alpha)
 
         self._target_encoder, self._target_critic, self._target_cell =\
             utils.make_targets(self.encoder, self.critic, self.cell)
 
         self._rl_params = utils.make_param_group(self.critic, self.actor)
-        self._ae_params = utils.make_param_group(self.encoder, self.cell. self.decoder)
+        self._ae_params = utils.make_param_group(self.encoder, self.cell, self.decoder)
 
         self.optim = torch.optim.Adam([
             {'params': self._rl_params, 'lr': self._c.rl_lr},
             {'params': self._ae_params, 'lr': self._c.ae_lr, 'weight_decay': self._c.weight_decay},
             {'params': [self._log_alpha], 'lr': self._c.dual_lr}
-        ], eps=1e-5)
+        ])
         self._target_entropy = self._c.target_ent_per_dim * act_dim
         self.to(self.device)
 
     @torch.no_grad()
     def _update_targets(self):
-        utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
-        utils.soft_update(self._target_cell, self.cell, self._c.encoder_tau)
-        utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
+        utils.soft_update(self._target_encoder, self.encoder, self._c.soft_update)
+        utils.soft_update(self._target_cell, self.cell, self._c.soft_update)
+        utils.soft_update(self._target_critic, self.critic, self._c.soft_update)

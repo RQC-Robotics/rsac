@@ -109,7 +109,7 @@ class TruncatedTanhTransform(td.transforms.TanhTransform):
 @torch.no_grad()
 def soft_update(target, online, rho):
     for pt, po in zip(target.parameters(), online.parameters()):
-        pt.data.copy_(rho * pt.data + (1. - rho) * po.data)
+        pt.data.copy_((1. - rho) * pt.data + rho * po.data)
 
 
 def retrace(resids, cs, discount, disclam):
