@@ -136,3 +136,11 @@ def make_param_group(*modules):
 
 def make_targets(*modules):
     return map(lambda m: copy.deepcopy(m).requires_grad_(False), modules)
+
+
+def weight_init(module):
+    _orthogonal_modules = (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)
+    if any(map(lambda t: isinstance(module, t), _orthogonal_modules)):
+        nn.init.orthogonal_(module.weight)
+        nn.init.zeros_(module.bias)
+

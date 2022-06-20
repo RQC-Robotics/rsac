@@ -34,14 +34,11 @@ class Actor(nn.Module):
     def __init__(self, in_features, out_features, layers, act=nn.ELU, mean_scale=5.):
         super().__init__()
         self.mean_scale = mean_scale
-        self.mlp = build_mlp(in_features, *layers, act=act, act_last=True)
-        self.loc = nn.Linear(layers[-1], out_features)
-        self.scale = nn.Linear(layers[-1], out_features)
+        self.mlp = build_mlp(in_features, *layers, 2*out_features, act=act)
 
     def forward(self, x):
         x = self.mlp(x)
-        mu = self.loc(x)
-        std = self.scale(x)
+        mu, std = x.chunk(2, -1)
         mu = self.mean_scale * torch.tanh(mu / self.mean_scale)
         std = torch.maximum(std, torch.full_like(std, -18.))
         std = F.softplus(std) + 1e-4
@@ -87,7 +84,7 @@ class PointCloudEncoder(nn.Module):
         for i in range(len(layers) - 1):
             block = nn.Sequential(
                 nn.Linear(layers[i], layers[i + 1]),
-                nn.LayerNorm(layers[i+1]),
+                # nn.LayerNorm(layers[i+1]),
                 act(),
             )
             self.layers.append(block)

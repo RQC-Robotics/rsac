@@ -22,23 +22,21 @@ class RLAlg:
         self.interactions_count = 0
 
     def learn(self):
-        def update_buffer():
+        def rollout():
             tr = utils.simulate(self.env, self.policy, True)
             self.buffer.add(tr)
             tr_len = len(tr['actions'])
-            self.interactions_count += self.config.action_repeat * seq_len
+            self.interactions_count += self.config.action_repeat * tr_len
             return tr_len
 
-        [update_buffer() for _ in range(10)]
+        [rollout() for _ in range(10)]
 
         while self.interactions_count < self.config.total_steps:
-            tr = utils.simulate(self.env, self.policy, True)
-            self.buffer.add(tr)
-            self.interactions_count += self.config.action_repeat * len(tr['actions'])
+            tr_len = rollout()
 
             dl = DataLoader(
                 self.buffer.sample_subset(
-                    self.config.spi * len(tr['actions']) // self.config.seq_len
+                    self.config.spi * tr_len // self.config.seq_len
                 ),
                 batch_size=self.config.batch_size,
                 drop_last=True
@@ -94,7 +92,7 @@ class RLAlg:
         return alg
 
     def make_env(self):
-        env = utils.make_env(self.config.task, seed=self.config.seed)
+        env = utils.make_env(self.config.task, random=self.config.seed)
         if self.config.observe == 'states':
             env = wrappers.StatesWrapper(env)
         elif self.config.observe in wrappers.PixelsWrapper.channels.keys():

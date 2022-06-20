@@ -234,6 +234,7 @@ class RSAC(nn.Module):
             {'params': [self._log_alpha], 'lr': self._c.dual_lr}
         ])
         self._target_entropy = self._c.target_ent_per_dim * act_dim
+        self.apply(utils.weight_init)
         self.to(self.device)
 
     @torch.no_grad()
