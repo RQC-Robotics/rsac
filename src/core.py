@@ -18,7 +18,7 @@ class RLAlg:
         self.task_path = pathlib.Path(config.logdir)
         self.callback = SummaryWriter(log_dir=self.task_path)
         self.agent = RSAC(self.env, config, self.callback)
-        self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len+config.burn_in)
+        self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len+config.burn_in+1)
         self.interactions_count = 0
 
     def learn(self):
