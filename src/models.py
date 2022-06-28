@@ -76,7 +76,7 @@ class PointCloudDecoder(nn.Module):
 
 class PointCloudEncoder(nn.Module):
     """PointNet with an option to process global features of selected points."""
-    def __init__(self, out_features, layers, act=nn.ELU, features_from_layers=(0,)):
+    def __init__(self, out_features, layers, act=nn.ELU, features_from_layers=()):
         super().__init__()
 
         layers = (3,) + layers

@@ -145,3 +145,8 @@ def weight_init(module):
         nn.init.orthogonal_(module.weight)
         nn.init.zeros_(module.bias)
 
+# def fix_seed(seed):
+#     random.seed(seed)
+#     np.random.seed(seed)
+#     torch.random(seed)
+

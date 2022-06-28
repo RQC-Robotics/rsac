@@ -58,7 +58,8 @@ class RSAC(nn.Module):
 
         critic_loss = self._policy_learning(
             states, actions, rewards, dones, log_probs, target_states,
-            online_policy, sampled_actions, sampled_log_probs, alpha
+            online_policy, sampled_actions.detach(),
+            sampled_log_probs.detach(), alpha.detach()
         )
 
         auxiliary_loss = self._auxiliary_loss(obs, states)
@@ -99,6 +100,7 @@ class RSAC(nn.Module):
             alpha
     ):
         with torch.no_grad():
+            del dones # only for continuous control tasks
             q_values = self._target_critic(
                 torch.repeat_interleave(target_states[None], self._c.num_samples, 0),
                 sampled_actions
@@ -109,21 +111,22 @@ class RSAC(nn.Module):
             target_q_values = self._target_critic(
                 target_states, actions).min(-1, keepdim=True).values
 
-            log_probs = online_policy.log_prob(actions).sum(-1, keepdim=True)
+            log_probs = online_policy.log_prob(actions).sum(-1, keepdim=True).detach()
             cs = torch.minimum(torch.tensor(1.), (log_probs - behaviour_log_probs).exp())
-            dones = dones.float()
-            deltas = rewards + self._c.discount * (1. - dones) * soft_values.roll(-1, 0) \
+            # dones = dones.float()
+            deltas = rewards + self._c.discount * soft_values.roll(-1, 0) \
                      - target_q_values
+            target_q_values, deltas, cs = map(
+                lambda t: t[:-1], (target_q_values, deltas, cs))
             # Bootstrapped value is known(=0) if the last transition is terminal
             #   so we can use it in Q-value update, otherwise mask it.
-            deltas[-1] *= dones[-1]
+            #deltas[-1] *= dones[-1]
             deltas = utils.retrace(deltas, cs, self._c.discount, self._c.disclam)
             target_q_values += deltas
 
         q_values = self.critic(states, actions)
-        loss = (q_values - target_q_values).pow(2)
+        loss = (q_values[:-1] - target_q_values).pow(2)
         # Actually, in continuous control ONLY it is proper to mask terminals.
-        loss = loss[:-1]
         loss = self._sequence_discount(loss) * loss
 
         if self._c.debug:
@@ -239,6 +242,6 @@ class RSAC(nn.Module):
 
     @torch.no_grad()
     def _update_targets(self):
-        utils.soft_update(self._target_encoder, self.encoder, self._c.soft_update)
-        utils.soft_update(self._target_cell, self.cell, self._c.soft_update)
-        utils.soft_update(self._target_critic, self.critic, self._c.soft_update)
+        utils.soft_update(self._target_encoder, self.encoder, self._c.encoder_tau)
+        utils.soft_update(self._target_cell, self.cell, self._c.encoder_tau)
+        utils.soft_update(self._target_critic, self.critic, self._c.critic_tau)
