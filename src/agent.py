@@ -56,7 +56,7 @@ class RSAC(nn.Module):
         sampled_actions = online_policy.rsample([self._c.num_samples])
         sampled_log_probs = online_policy.log_prob(sampled_actions)
 
-        rl_loss = self._policy_learning(
+        critic_loss = self._policy_learning(
             states, actions, rewards, dones, log_probs, target_states,
             online_policy, sampled_actions, sampled_log_probs, alpha
         )
@@ -65,7 +65,7 @@ class RSAC(nn.Module):
 
         actor_loss, dual_loss = self._policy_improvement(
             states.detach(), sampled_actions, sampled_log_probs, alpha)
-        model_loss = rl_loss + auxiliary_loss + actor_loss + dual_loss
+        model_loss = critic_loss + auxiliary_loss + actor_loss + dual_loss
 
         self.optim.zero_grad()
         model_loss.backward()
@@ -76,7 +76,7 @@ class RSAC(nn.Module):
         if self._c.debug:
             self.callback.add_scalar('train/actor_loss', actor_loss, self._step)
             self.callback.add_scalar('train/auxiliary_loss', auxiliary_loss, self._step)
-            self.callback.add_scalar('train/critic_loss', rl_loss, self._step)
+            self.callback.add_scalar('train/critic_loss', critic_loss, self._step)
             self.callback.add_scalar('train/actor_grads', utils.grads_sum(self.actor), self._step)
             self.callback.add_scalar('train/critic_grads', utils.grads_sum(self.critic), self._step)
             self.callback.add_scalar(
@@ -153,8 +153,7 @@ class RSAC(nn.Module):
             self.callback.add_scalar('train/actor_entropy', ent, self._step)
             self.callback.add_scalar('train/alpha', alpha.detach().mean(), self._step)
 
-        actor_loss = torch.mean(
-            alpha.detach() * log_probs.sum(-1) - q_values, 0)
+        actor_loss = alpha.detach() * log_probs.sum(-1) - q_values
         actor_loss = self._sequence_discount(actor_loss) * actor_loss
         dual_loss = - alpha * (log_probs.detach().sum(-1) + self._target_entropy)
         return actor_loss.mean(), dual_loss.mean()
@@ -211,6 +210,7 @@ class RSAC(nn.Module):
         elif self._c.observe == 'point_cloud':
             encoder = models.PointCloudEncoder(emb, layers=self._c.pn_layers,
                                                features_from_layers=())
+            # encoder = models.BNPointCloudEncoder(emb, layers=self._c.pn_layers)
             decoder = models.PointCloudDecoder(hidden, layers=self._c.pn_layers,
                                                pn_number=self._c.pn_number)
         else:

@@ -166,3 +166,31 @@ class PixelsDecoder(nn.Module):
         img = self.deconvs(x)
         img = img.reshape(*prefix_shape, self.out_channels, 84, 84)
         return img
+
+
+class BNPointCloudEncoder(nn.Module):
+    def __init__(self, out_features, layers, act=nn.ELU):
+        super().__init__()
+
+        self.out_features = out_features
+        layers = (3,) + layers
+        point_net = []
+        for in_dim, out_dim in zip(layers[:-1], layers[1:]):
+            point_net.extend([
+                nn.Conv1d(in_dim, out_dim, 1),
+                nn.BatchNorm1d(out_dim),
+                act()
+            ])
+
+        self.point_net = nn.Sequential(*point_net)
+        self.fc = LayerNormTanhEmbedding(layers[-1], out_features)
+
+    def forward(self, x):
+        import pdb; pdb.set_trace()
+        x = torch.swapaxes(x, -1, -2)  # legacy
+        *prefix_shape, channels, points_number = x.shape
+        x = x.reshape(-1, channels, points_number)
+        x = self.point_net(x)
+        values, indices = x.max(-1)
+        values = self.fc(values)
+        return values.reshape(*prefix_shape, self.out_features)

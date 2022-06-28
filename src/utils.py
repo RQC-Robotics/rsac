@@ -11,14 +11,12 @@ F = nn.functional
 td = torch.distributions
 
 
-def build_mlp(*sizes, act=nn.ELU, act_last=False):
+def build_mlp(*sizes, act=nn.ELU):
     mlp = []
     for i in range(1, len(sizes)):
         mlp.append(nn.Linear(sizes[i-1], sizes[i]))
         mlp.append(act())
-    if not act_last:
-        mlp = mlp[:-1]
-    return nn.Sequential(*mlp)
+    return nn.Sequential(*mlp[:-1])
 
 
 def grads_sum(model):
@@ -29,14 +27,14 @@ def grads_sum(model):
     return np.sqrt(s)
 
 
-def make_env(name, **kwargs):
+def make_env(name, **task_kwargs):
     if name in manipulation.ALL:
         return manipulation.load(name)
     domain, task = name.split('_', 1)
     if domain == 'ball':
         domain = 'ball_in_cup'
         task = 'catch'
-    return suite.load(domain, task, task_kwargs=kwargs)
+    return suite.load(domain, task, task_kwargs=task_kwargs)
 
 
 def set_seed(seed):
@@ -100,12 +98,13 @@ class TrajectoryBuffer(Dataset):
         return len(self._data)
 
     def sample_subset(self, size):
+        size = max(16*len(self._data), size)  # so agent doesn't overfit at the beginning
         idx = np.random.randint(0, len(self._data), size=size)
         return torch.utils.data.Subset(self, idx)
 
 
 class TruncatedTanhTransform(td.transforms.TanhTransform):
-    _lim = .9999
+    _lim = .999
 
     def _inverse(self, y):
         y = torch.clamp(y, min=-self._lim, max=self._lim)
@@ -139,8 +138,10 @@ def make_targets(*modules):
 
 
 def weight_init(module):
-    _orthogonal_modules = (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)
-    if any(map(lambda t: isinstance(module, t), _orthogonal_modules)):
+    if any(map(
+            lambda t: isinstance(module, t),
+            (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)
+    )):
         nn.init.orthogonal_(module.weight)
         nn.init.zeros_(module.bias)
 

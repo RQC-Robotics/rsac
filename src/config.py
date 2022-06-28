@@ -33,7 +33,7 @@ class BaseConfig(ABC):
 class Config(BaseConfig):
     # algo
     discount: float = .99
-    disclam: float = 1.
+    disclam: float = .99
     num_samples: int = 8
     action_repeat: int = 2
     init_temperature: float = .1
@@ -42,22 +42,22 @@ class Config(BaseConfig):
     # architecture
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
-    hidden_dim: int = 256
-    obs_emb_dim: int = 256
-    mean_scale: float = 5.
+    hidden_dim: int = 128
+    obs_emb_dim: int = 128
+    mean_scale: float = 1.
 
     # PointNet
     pn_number: int = 100
-    pn_layers: tuple = (64, 64, 128, 256)
+    pn_layers: tuple = (64, 128, 256)
     downsample: int = 3
 
     # train
-    rl_lr: float = 1e-3
-    ae_lr: float = 1e-3
-    dual_lr: float = 1e-3
+    rl_lr: float = 3e-4
+    ae_lr: float = 3e-4
+    dual_lr: float = 3e-4
     weight_decay: float = 0.
     soft_update: float = .01
-    max_grad: float = 40.
+    max_grad: float = 20.
 
     total_steps: int = 4*10**6
     spi: int = 64
