@@ -43,12 +43,12 @@ class Config(BaseConfig):
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
     hidden_dim: int = 128
-    obs_emb_dim: int = 128
+    obs_emb_dim: int = 64
     mean_scale: float = 1.
 
     # PointNet
     pn_number: int = 100
-    pn_layers: tuple = (64, 128, 256)
+    pn_layers: tuple = (32, 64, 128)
     downsample: int = 3
 
     # train

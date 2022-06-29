@@ -141,12 +141,12 @@ class Monitor(Wrapper):
 
 class PixelsWrapper(Wrapper):
     channels = dict(rgb=3, rgbd=4, d=1, g=1, gd=2)
+    _grayscale_coef = np.array([0.299, 0.587, 0.114])
 
     def __init__(self, env, render_kwargs=None, mode='rgb'):
         super().__init__(env)
         self.render_kwargs = render_kwargs or dict(camera_id=0, height=84, width=84)
         self.mode = mode
-        self._gs_coef = np.array([0.299, 0.587, 0.114])
 
     def observation(self, timestamp):
         if self.mode != 'd':
@@ -160,7 +160,7 @@ class PixelsWrapper(Wrapper):
             depth = np.where(depth > 10., 0., depth)  # truncate depth
             obs += (depth[..., np.newaxis],)
         if 'rgb' not in self.mode and 'g' in self.mode:
-            g = rgb @ self._gs_coef
+            g = rgb @ self._grayscale_coef
             obs += (g[..., np.newaxis],)
         obs = np.concatenate(obs, -1)
         return obs.transpose((2, 1, 0)).astype(np.float32)

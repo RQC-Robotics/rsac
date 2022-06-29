@@ -11,7 +11,7 @@ import pickle
 # TODO: N different seeds
 class RLAlg:
     def __init__(self, config):
-
+        utils.set_seed(config.seed)
         self.config = config
         self.env = self.make_env()
         utils.set_seed(config.seed)
