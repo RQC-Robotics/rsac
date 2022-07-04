@@ -67,16 +67,19 @@ class StatesWrapper(Wrapper):
 
 
 class ActionRepeat(Wrapper):
-    def __init__(self, env, frames_number: int):
+    def __init__(self, env, frames_number: int, discount: float = 1.):
         assert frames_number > 0
         super().__init__(env)
         self.fn = frames_number
+        self.discount = discount
 
     def step(self, action):
         R = 0
+        discount = 1.
         for i in range(self.fn):
             next_obs, reward, done = self.env.step(action)
-            R += reward
+            R += discount*reward
+            discount *= self.discount
             if done:
                 break
         return np.float32(next_obs), np.float32(R), done
@@ -175,8 +178,14 @@ class PixelsWrapper(Wrapper):
 
 
 class PointCloudWrapper(Wrapper):
-    def __init__(self, env, pn_number: int = 1000, render_kwargs=None,
-                 static_camera=False, as_pixels=False, downsample=1, apply_segmentation=True):
+    def __init__(
+            self,
+            env,
+            pn_number: int = 1000,
+            render_kwargs=None,
+            downsample=1,
+            apply_segmentation=True
+    ):
         super().__init__(env)
         self.render_kwargs = render_kwargs or dict(camera_id=0, height=84, width=84)
         assert all(map(lambda k: k in self.render_kwargs, ('camera_id', 'height', 'width')))
@@ -186,19 +195,12 @@ class PointCloudWrapper(Wrapper):
         if apply_segmentation:
             self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0
 
-        self.static_camera = static_camera
-        self.as_pixels = as_pixels
         self.downsample = downsample
-        self._partial_sum = None
-        self._inverse_matrix = self.inverse_matrix() if static_camera else None
 
     def observation(self, timestamp):
         depth_map = self.physics.render(depth=True, **self.render_kwargs,
                                         scene_option=self.scene_option)
         point_cloud = self._get_point_cloud(depth_map)
-        if self.as_pixels:
-            # TODO: decide if segmentation or another mask is needed
-            return point_cloud
         point_cloud = np.reshape(point_cloud, (-1, 3))
 
         segmentation_mask = self._segmentation_mask()
@@ -240,22 +242,14 @@ class PointCloudWrapper(Wrapper):
         return pc
 
     def _get_point_cloud(self, depth_map):
-        cam_id = self.render_kwargs['camera_id']
-        inv_mat = self._inverse_matrix if self.static_camera else self.inverse_matrix()
-        dot_product = lambda x, y: np.einsum('ij, jhw->hwi', x, y)
-
-        if not self.static_camera or self._partial_sum is None:
-            width = self.render_kwargs['width']
-            height = self.render_kwargs['height']
-            grid = 1. + np.mgrid[:height, :width] # TODO: somehting is wrong here
-            self._partial_sum = dot_product(inv_mat[:, :-1], grid)
-
-        residual_sum = dot_product(inv_mat[:, -1:], depth_map[np.newaxis])
-        return self._partial_sum + residual_sum# + self.physics.data.cam_xpos[cam_id]
+        width = self.render_kwargs['width']
+        height = self.render_kwargs['height']
+        grid = 1. + np.mgrid[:height, :width]  # TODO: somehting is wrong here
+        grid = np.concatenate((grid, depth_map[None]), axis=0)
+        return np.einsum('ij, jhw->hwi', self.inverse_matrix(), grid)
 
     def _mask(self, point_cloud):
         """ Heuristic to cut outliers """
-        threshold = np.quantile(point_cloud[..., 2], .99)
         return point_cloud[..., 2] < 10.
 
     def observation_spec(self):

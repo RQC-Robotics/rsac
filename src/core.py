@@ -13,8 +13,7 @@ class RLAlg:
     def __init__(self, config):
         utils.set_seed(config.seed)
         self.config = config
-        self.env = self.make_env()
-        utils.set_seed(config.seed)
+        self.env = self.make_env(random=config.seed)
         self.task_path = pathlib.Path(config.logdir)
         self.callback = SummaryWriter(log_dir=self.task_path)
         self.agent = RSAC(self.env, config, self.callback)
@@ -23,7 +22,6 @@ class RLAlg:
 
     def learn(self):
         while self.interactions_count < self.config.total_steps:
-            self.agent.eval()
             tr = utils.simulate(self.env, self.policy, True)
             self.buffer.add(tr)
             self.interactions_count += self.config.action_repeat * len(tr['actions'])
@@ -35,7 +33,6 @@ class RLAlg:
                 batch_size=self.config.batch_size,
                 drop_last=True
             )
-            self.agent.train()
             for tr in dl:
                 obs, actions, rewards, done_flags, log_probs, hidden_states = map(
                     lambda k: tr[k].to(self.agent.device).transpose(0, 1),
@@ -44,8 +41,7 @@ class RLAlg:
                 self.agent.step(obs, actions, rewards, done_flags, log_probs, hidden_states)
 
             if self.interactions_count % self.config.eval_freq == 0:
-                self.agent.eval()
-                scores = [utils.simulate(self.env, self.policy, False)['rewards'].sum()
+                scores = [utils.simulate(self.make_env(), self.policy, False)['rewards'].sum()
                           for _ in range(10)]
                 self.callback.add_scalar('test/eval_reward', np.mean(scores),
                                          self.interactions_count)
@@ -86,8 +82,8 @@ class RLAlg:
                 alg.buffer = pickle.load(b)
         return alg
 
-    def make_env(self):
-        env = utils.make_env(self.config.task, random=self.config.seed)
+    def make_env(self, **task_kwargs):
+        env = utils.make_env(self.config.task, **task_kwargs)
         if self.config.observe == 'states':
             env = wrappers.StatesWrapper(env)
         elif self.config.observe in wrappers.PixelsWrapper.channels.keys():
@@ -101,7 +97,7 @@ class RLAlg:
             )
         else:
             raise NotImplementedError
-        env = wrappers.ActionRepeat(env, self.config.action_repeat)
+        env = wrappers.ActionRepeat(env, self.config.action_repeat, discount=self.config.discount)
         return env
 
     def policy(self, obs, state, training):

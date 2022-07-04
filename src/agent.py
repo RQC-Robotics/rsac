@@ -121,7 +121,6 @@ class RSAC(nn.Module):
 
         q_values = self.critic(states, actions)
         loss = (q_values[:-1] - target_q_values).pow(2)
-        # Actually, in continuous control ONLY it is proper to mask terminals.
         loss = self._sequence_discount(loss) * loss
 
         if self._c.debug:
@@ -146,6 +145,7 @@ class RSAC(nn.Module):
             actions
         ).min(-1).values
         self.critic.requires_grad_(True)
+
         if self._c.debug:
             ent = -log_probs.detach().mean()
             self.callback.add_scalar('train/actor_entropy', ent, self._step)
@@ -199,22 +199,18 @@ class RSAC(nn.Module):
         # Encoder+decoder
         obs_dim = obs_spec.shape[0]
         if self._c.observe == 'states':
-            encoder = models.LayerNormTanhEmbedding(obs_dim, emb)
-            decoder = nn.Linear(emb, obs_dim)
+            self.encoder = models.LayerNormTanhEmbedding(obs_dim, emb)
+            self.decoder = nn.Linear(emb, obs_dim)
         elif self._c.observe in wrappers.PixelsWrapper.channels.keys():
-            encoder = models.PixelsEncoder(obs_dim, emb)
-            decoder = models.PixelsDecoder(emb, obs_dim)
+            self.encoder = models.PixelsEncoder(obs_dim, emb)
+            self.decoder = models.PixelsDecoder(emb, obs_dim)
         elif self._c.observe == 'point_cloud':
-            encoder = models.PointCloudEncoder(emb, layers=self._c.pn_layers,
+            self.encoder = models.PointCloudEncoder(emb, layers=self._c.pn_layers,
                                                features_from_layers=())
-            # encoder = models.BNPointCloudEncoder(emb, layers=self._c.pn_layers)
-            decoder = models.PointCloudDecoder(hidden, layers=self._c.pn_layers,
+            self.decoder = models.PointCloudDecoder(hidden, layers=self._c.pn_layers,
                                                pn_number=self._c.pn_number)
         else:
             raise NotImplementedError
-
-        self.encoder = encoder
-        self.decoder = decoder
 
         init_log_alpha = torch.log(torch.tensor(self._c.init_temperature).exp() - 1.)
         self._log_alpha = nn.Parameter(init_log_alpha)

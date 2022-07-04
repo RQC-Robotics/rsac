@@ -31,7 +31,7 @@ class Critic(nn.Module):
 
 
 class Actor(nn.Module):
-    def __init__(self, in_features, out_features, layers, act=nn.ELU, mean_scale=5.):
+    def __init__(self, in_features, out_features, layers, act=nn.ELU, mean_scale=1.):
         super().__init__()
         self.mean_scale = mean_scale
         self.mlp = build_mlp(in_features, *layers, 2*out_features, act=act)
@@ -84,7 +84,6 @@ class PointCloudEncoder(nn.Module):
         for i in range(len(layers) - 1):
             block = nn.Sequential(
                 nn.Linear(layers[i], layers[i + 1]),
-                # nn.LayerNorm(layers[i+1]),
                 act(),
             )
             self.layers.append(block)
