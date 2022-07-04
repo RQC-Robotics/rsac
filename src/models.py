@@ -20,9 +20,9 @@ class LayerNormTanhEmbedding(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, in_features, layers):
+    def __init__(self, in_features, layers, act=nn.ELU):
         super().__init__()
-        self.qs = nn.ModuleList([build_mlp(in_features, *layers, 1) for _ in range(2)])
+        self.qs = nn.ModuleList([build_mlp(in_features, *layers, 1, act=act) for _ in range(2)])
 
     def forward(self, obs, action):
         x = torch.cat([obs, action], -1)
@@ -31,20 +31,17 @@ class Critic(nn.Module):
 
 
 class Actor(nn.Module):
-    def __init__(self, in_features, out_features, layers, mean_scale=5.):
+    def __init__(self, in_features, out_features, layers, act=nn.ELU, mean_scale=5.):
         super().__init__()
         self.mean_scale = mean_scale
-        self.mlp = build_mlp(in_features, *layers)
-        self.loc = nn.Linear(layers[-1], out_features)
-        self.scale = nn.Linear(layers[-1], out_features)
+        self.mlp = build_mlp(in_features, *layers, 2*out_features, act=act)
 
     def forward(self, x):
-        x = F.elu(self.mlp(x))
-        mu = self.loc(x)
-        std = self.scale(x)
+        x = self.mlp(x)
+        mu, std = x.chunk(2, -1)
         mu = self.mean_scale * torch.tanh(mu / self.mean_scale)
         std = torch.maximum(std, torch.full_like(std, -18.))
-        std = F.softplus(std) + 1e-3
+        std = F.softplus(std) + 1e-4
         return self.get_dist(mu, std)
 
     @staticmethod
@@ -79,7 +76,7 @@ class PointCloudDecoder(nn.Module):
 
 class PointCloudEncoder(nn.Module):
     """PointNet with an option to process global features of selected points."""
-    def __init__(self, out_features, layers, act=nn.ELU, features_from_layers=(0,)):
+    def __init__(self, out_features, layers, act=nn.ELU, features_from_layers=()):
         super().__init__()
 
         layers = (3,) + layers
@@ -96,7 +93,7 @@ class PointCloudEncoder(nn.Module):
         self.selected_layers = features_from_layers
 
         self.fc_size = layers[-1] * (1 + sum([layers[i] for i in self.selected_layers]))
-        self.fc = nn.Linear(self.fc_size, out_features)
+        self.fc = LayerNormTanhEmbedding(self.fc_size, out_features)
 
     def forward(self, x):
         features = [x]
@@ -110,8 +107,7 @@ class PointCloudEncoder(nn.Module):
                 [self._gather(features[ind], indices) for ind in self.selected_layers],
                 -1)
             values = torch.cat((values.unsqueeze(-1), selected_features), -1).flatten(-2)
-        values = self.fc(values)
-        return torch.tanh(values)
+        return self.fc(values)
 
     @staticmethod
     def _gather(features, indices):

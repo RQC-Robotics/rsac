@@ -11,13 +11,13 @@ import pickle
 
 class RLAlg:
     def __init__(self, config):
-
+        utils.set_seed(config.seed)
         self.config = config
         self.env = self.make_env()
         self.task_path = pathlib.Path(config.logdir)
         self.callback = SummaryWriter(log_dir=self.task_path)
         self.agent = RSAC(self.env, config, self.callback)
-        self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len)
+        self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len+1)
         self.interactions_count = 0
 
     def learn(self):
@@ -84,7 +84,7 @@ class RLAlg:
         return alg
 
     def make_env(self):
-        env = utils.make_env(self.config.task)
+        env = utils.make_env(self.config.task, random=self.config.seed)
         if self.config.observe == 'states':
             env = wrappers.StatesWrapper(env)
             env = wrappers.ActionRepeat(env, self.config.action_repeat)
@@ -96,7 +96,8 @@ class RLAlg:
             env = wrappers.PointCloudWrapper(
                 env,
                 pn_number=self.config.pn_number,
-                downsample=self.config.downsample
+                downsample=self.config.downsample,
+                apply_segmentation=True
             )
             env = wrappers.ActionRepeat(env, self.config.action_repeat)
             env = wrappers.FrameStack(env, self.config.frames_stack, stack=True)

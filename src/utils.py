@@ -27,14 +27,20 @@ def grads_sum(model):
     return np.sqrt(s)
 
 
-def make_env(name, **kwargs):
+def make_env(name, **task_kwargs):
     if name in manipulation.ALL:
         return manipulation.load(name)
     domain, task = name.split('_', 1)
     if domain == 'ball':
         domain = 'ball_in_cup'
         task = 'catch'
-    return suite.load(domain, task, **kwargs)
+    return suite.load(domain, task, task_kwargs=task_kwargs)
+
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(0)
 
 
 def simulate(env, policy, training):
@@ -84,12 +90,13 @@ class TrajectoryBuffer(Dataset):
         return len(self._data)
 
     def sample_subset(self, size):
+        size = max(16*len(self._data), size)  # so agent doesn't overfit at the beginning
         idx = np.random.randint(0, len(self._data), size=size)
         return torch.utils.data.Subset(self, idx)
 
 
 class TruncatedTanhTransform(td.transforms.TanhTransform):
-    _lim = .9999
+    _lim = .999
 
     def _inverse(self, y):
         y = torch.clamp(y, min=-self._lim, max=self._lim)
@@ -99,7 +106,7 @@ class TruncatedTanhTransform(td.transforms.TanhTransform):
 @torch.no_grad()
 def soft_update(target, online, rho):
     for pt, po in zip(target.parameters(), online.parameters()):
-        pt.data.copy_(rho * pt.data + (1. - rho) * po.data)
+        pt.data.copy_((1. - rho) * pt.data + rho * po.data)
 
 
 def retrace(resids, cs, discount, disclam):
@@ -120,3 +127,12 @@ def make_param_group(*modules):
 
 def make_targets(*modules):
     return map(lambda m: copy.deepcopy(m).requires_grad_(False), modules)
+
+
+def weight_init(module):
+    if any(map(
+            lambda t: isinstance(module, t),
+            (nn.Linear, nn.Conv2d, nn.ConvTranspose2d)
+    )):
+        nn.init.orthogonal_(module.weight)
+        nn.init.zeros_(module.bias)
