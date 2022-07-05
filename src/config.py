@@ -48,7 +48,7 @@ class Config(BaseConfig):
 
     # PointNet
     pn_number: int = 300
-    pn_layers: tuple = (64, 64, 64)
+    pn_layers: tuple = (64, 128, 256)
     downsample: int = 10
 
     # train
@@ -58,7 +58,7 @@ class Config(BaseConfig):
     weight_decay: float = 0.
     critic_tau: float = .01
     encoder_tau: float = .01
-    max_grad: float = 20.
+    max_grad: float = 40.
 
     total_steps: int = 4*10**6
     spi: int = 128
