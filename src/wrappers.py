@@ -1,4 +1,3 @@
-from typing import Optional
 import numpy as np
 from collections import defaultdict, deque
 from dm_env import specs
@@ -68,16 +67,19 @@ class StatesWrapper(Wrapper):
 
 
 class ActionRepeat(Wrapper):
-    def __init__(self, env, frames_number: int):
+    def __init__(self, env, frames_number: int, discount: float = 1.):
         assert frames_number > 0
         super().__init__(env)
         self.fn = frames_number
+        self.discount = discount
 
     def step(self, action):
         R = 0
+        discount = 1.
         for i in range(self.fn):
             next_obs, reward, done = self.env.step(action)
-            R += reward
+            R += discount*reward
+            discount *= self.discount
             if done:
                 break
         return np.float32(next_obs), np.float32(R), done
@@ -159,6 +161,7 @@ class PixelsWrapper(Wrapper):
         if 'd' in self.mode:
             depth = self.physics.render(depth=True, **self.render_kwargs)
             depth = np.where(depth > 10., 0., depth)  # truncate depth
+            depth /= depth.max()
             obs += (depth[..., np.newaxis],)
         if 'rgb' not in self.mode and 'g' in self.mode:
             g = rgb @ self._grayscale_coef
@@ -176,10 +179,16 @@ class PixelsWrapper(Wrapper):
 
 
 class PointCloudWrapper(Wrapper):
-    def __init__(self, env, pn_number: int = 1000, render_kwargs=None,
-                 static_camera=False, as_pixels=False, downsample=1, apply_segmentation=True):
+    def __init__(
+            self,
+            env,
+            pn_number: int = 1000,
+            render_kwargs=None,
+            downsample=1,
+            apply_segmentation=True
+    ):
         super().__init__(env)
-        self.render_kwargs = render_kwargs or dict(camera_id=0, height=84, width=84)
+        self.render_kwargs = render_kwargs or dict(camera_id=0, height=240, width=320)
         assert all(map(lambda k: k in self.render_kwargs, ('camera_id', 'height', 'width')))
         self.pn_number = pn_number
 
@@ -187,19 +196,12 @@ class PointCloudWrapper(Wrapper):
         if apply_segmentation:
             self.scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0
 
-        self.static_camera = static_camera
-        self.as_pixels = as_pixels
         self.downsample = downsample
-        self._partial_sum = None
-        self._inverse_matrix = self.inverse_matrix() if static_camera else None
 
     def observation(self, timestamp):
         depth_map = self.physics.render(depth=True, **self.render_kwargs,
                                         scene_option=self.scene_option)
         point_cloud = self._get_point_cloud(depth_map)
-        if self.as_pixels:
-            # TODO: decide if segmentation or another mask is needed
-            return point_cloud
         point_cloud = np.reshape(point_cloud, (-1, 3))
 
         segmentation_mask = self._segmentation_mask()
@@ -241,22 +243,72 @@ class PointCloudWrapper(Wrapper):
         return pc
 
     def _get_point_cloud(self, depth_map):
-        cam_id = self.render_kwargs['camera_id']
-        inv_mat = self._inverse_matrix if self.static_camera else self.inverse_matrix()
-        def dot_product(x, y): return np.einsum('ij, jhw->hwi', x, y)
-
-        if not self.static_camera or self._partial_sum is None:
-            width = self.render_kwargs['width']
-            height = self.render_kwargs['height']
-            grid = 1. + np.mgrid[:height, :width]
-            self._partial_sum = dot_product(inv_mat[:, :-1], grid)
-
-        residual_sum = dot_product(inv_mat[:, -1:], depth_map[np.newaxis])
-        return self._partial_sum + residual_sum# + self.physics.data.cam_xpos[cam_id]
+        width = self.render_kwargs['width']
+        height = self.render_kwargs['height']
+        grid = 1. + np.mgrid[:height, :width]  # TODO: somehting is wrong here
+        grid = np.concatenate((grid, depth_map[None]), axis=0)
+        return np.einsum('ij, jhw->hwi', self.inverse_matrix(), grid)
 
     def _mask(self, point_cloud):
         """ Heuristic to cut outliers """
-        threshold = np.quantile(point_cloud[..., 2], .99)
+        return point_cloud[..., 2] < 10.
+
+    def observation_spec(self):
+        return specs.Array(shape=(self.pn_number, 3), dtype=np.float32, name='point_cloud')
+
+
+class PointCloudWrapperV2(Wrapper):
+    def __init__(self, env, pn_number: int = 1000, render_kwargs=None, stride: int = 1):
+        super().__init__(env)
+        self.render_kwargs = render_kwargs or dict(camera_id=0, height=240, width=320)
+        assert all(map(lambda k: k in self.render_kwargs, ('camera_id', 'height', 'width')))
+
+        self._grid = 1. + np.mgrid[:self.render_kwargs['height'], :self.render_kwargs['width']]
+
+        self._scene_option = wrapper.MjvOption()
+        self._scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0
+
+        self.stride = stride
+        self.pn_number = pn_number
+
+    def observation(self, timestep):
+        depth = self.env.physics.render(depth=True, scene_option=self._scene_option,
+                                        **self.render_kwargs)
+        pcd = self._point_cloud_from_depth(depth)
+        mask = self._mask(pcd)
+        pcd = pcd[mask][::self.stride]
+        return self._to_fixed_number(pcd).astype(np.float32)
+
+    def _point_cloud_from_depth(self, depth):
+        f_inv, cx, cy = self._inverse_intrinsic_matrix_params()
+        x, y = (depth * self._grid)
+        x = (x - cx) * f_inv
+        y = (y - cy) * f_inv
+
+        pc = np.stack((x, y, depth), axis=-1)
+        return pc
+        # rot_mat = self.env.physics.data.cam_xmat[self.render_kwargs['camera_id']].reshape(3, 3)
+        # return np.einsum('ij, hwi->hwj', rot_mat, pc).reshape(-1, 3)
+
+    def _to_fixed_number(self, pc):
+        n = len(pc)
+        if n == 0:
+            pc = np.zeros((1, 3))
+        elif n <= self.pn_number:
+            pc = np.pad(pc, ((0, self.pn_number - n), (0, 0)), mode='edge')
+        else:
+            pc = np.random.permutation(pc)[:self.pn_number]
+        return pc
+
+    def _inverse_intrinsic_matrix_params(self):
+        height = self.render_kwargs['height']
+        cx = (height - 1) / 2.
+        cy = (self.render_kwargs['width'] - 1) / 2.
+        fov = self.env.physics.model.cam_fovy[self.render_kwargs['camera_id']]
+        f_inv = 2 * np.tan(np.deg2rad(fov) / 2.) / height
+        return f_inv, cx, cy
+
+    def _mask(self, point_cloud):
         return point_cloud[..., 2] < 10.
 
     def observation_spec(self):

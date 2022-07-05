@@ -43,33 +43,33 @@ class Config(BaseConfig):
     # architecture
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
-    obs_emb_dim: int = 50
+    obs_emb_dim: int = 64
     mean_scale: float = 1.
 
     # PointNet
-    pn_number: int = 100
-    pn_layers: tuple = (32, 64, 128)
-    downsample: int = 3
+    pn_number: int = 300
+    pn_layers: tuple = (64, 64, 64)
+    downsample: int = 10
 
     # train
     rl_lr: float = 3e-4
     ae_lr: float = 3e-4
-    dual_lr: float = 1e-4
+    dual_lr: float = 3e-4
     weight_decay: float = 0.
     critic_tau: float = .01
-    encoder_tau: float = .05
+    encoder_tau: float = .01
     max_grad: float = 20.
 
     total_steps: int = 4*10**6
     spi: int = 128
-    seq_len: int = 16
-    batch_size: int = 8
+    seq_len: int = 8
+    batch_size: int = 16
     eval_freq: int = 20000
     buffer_size: int = 1000
 
     # task
-    task: str = 'walker_stand'
     seed: int = 0
+    task: str = 'walker_stand'
     aux_loss: str = 'None'
     logdir: str = 'logdir'
     device: str = 'cuda'

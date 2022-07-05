@@ -40,7 +40,7 @@ def make_env(name, **task_kwargs):
 def set_seed(seed):
     torch.manual_seed(seed)
     np.random.seed(seed)
-    random.seed(0)
+    random.seed(seed)
 
 
 def simulate(env, policy, training):
@@ -103,10 +103,9 @@ class TruncatedTanhTransform(td.transforms.TanhTransform):
         return y.atanh()
 
 
-@torch.no_grad()
 def soft_update(target, online, rho):
     for pt, po in zip(target.parameters(), online.parameters()):
-        pt.data.copy_((1. - rho) * pt.data + rho * po.data)
+        pt.data.copy_((1. - rho) * pt.data + rho * po.detach())
 
 
 def retrace(resids, cs, discount, disclam):

@@ -1,3 +1,4 @@
+import time
 from .agent import RSAC
 from . import wrappers, utils
 import torch
@@ -13,7 +14,7 @@ class RLAlg:
     def __init__(self, config):
         utils.set_seed(config.seed)
         self.config = config
-        self.env = self.make_env()
+        self.env = self.make_env(random=config.seed)
         self.task_path = pathlib.Path(config.logdir)
         self.callback = SummaryWriter(log_dir=self.task_path)
         self.agent = RSAC(self.env, config, self.callback)
@@ -21,6 +22,7 @@ class RLAlg:
         self.interactions_count = 0
 
     def learn(self):
+        dur = time.time()
         while self.interactions_count < self.config.total_steps:
             tr = utils.simulate(self.env, self.policy, True)
             self.buffer.add(tr)
@@ -42,13 +44,19 @@ class RLAlg:
                 self.agent.step(obs, actions, rewards, done_flags, log_probs)
 
             if self.interactions_count % self.config.eval_freq == 0:
-                scores = [utils.simulate(self.env, self.policy, False)['rewards'].sum()
+                scores = [utils.simulate(self.make_env(), self.policy, False)['rewards'].sum()
                           for _ in range(10)]
                 self.callback.add_scalar('test/eval_reward', np.mean(scores),
                                          self.interactions_count)
                 self.callback.add_scalar('test/eval_std', np.std(scores), self.interactions_count)
 
                 self.save()
+
+        dur = time.time() - dur
+        self.callback.add_hparams(
+            vars(self.config),
+            dict(duration=dur, score=np.mean(scores))
+        )
 
     def save(self):
         self.config.save(self.task_path / 'config.yml')
@@ -83,8 +91,8 @@ class RLAlg:
                 alg.buffer = pickle.load(b)
         return alg
 
-    def make_env(self):
-        env = utils.make_env(self.config.task, random=self.config.seed)
+    def make_env(self, **task_kwargs):
+        env = utils.make_env(self.config.task, **task_kwargs)
         if self.config.observe == 'states':
             env = wrappers.StatesWrapper(env)
             env = wrappers.ActionRepeat(env, self.config.action_repeat)
@@ -93,11 +101,17 @@ class RLAlg:
             env = wrappers.ActionRepeat(env, self.config.action_repeat)
             env = wrappers.FrameStack(env, self.config.frames_stack, stack=False)
         elif self.config.observe == 'point_cloud':
-            env = wrappers.PointCloudWrapper(
+            # env = wrappers.PointCloudWrapper(
+            #     env,
+            #     pn_number=self.config.pn_number,
+            #     render_kwargs=dict(camera_id=0, height=240, width=320),
+            #     downsample=self.config.downsample,
+            #     apply_segmentation=True,
+            # )
+            env = wrappers.PointCloudWrapperV2(
                 env,
                 pn_number=self.config.pn_number,
-                downsample=self.config.downsample,
-                apply_segmentation=True
+                stride=self.config.downsample,
             )
             env = wrappers.ActionRepeat(env, self.config.action_repeat)
             env = wrappers.FrameStack(env, self.config.frames_stack, stack=True)
