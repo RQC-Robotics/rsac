@@ -42,14 +42,14 @@ class Config(BaseConfig):
     # architecture
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
-    hidden_dim: int = 256
-    obs_emb_dim: int = 256
+    hidden_dim: int = 128
+    obs_emb_dim: int = 64
     mean_scale: float = 1.
 
     # PointNet
-    pn_number: int = 100
-    pn_layers: tuple = (64, 128, 256)
-    downsample: int = 3
+    pn_number: int = 300
+    pn_layers: tuple = (64, 64, 64)
+    downsample: int = 10
 
     # train
     rl_lr: float = 3e-4
@@ -61,12 +61,12 @@ class Config(BaseConfig):
     max_grad: float = 20.
 
     total_steps: int = 4*10**6
-    spi: int = 256
-    seq_len: int = 32
-    batch_size: int = 8
+    spi: int = 128
+    seq_len: int = 8
+    batch_size: int = 16
     eval_freq: int = 20000
     buffer_size: int = 1000
-    burn_in: int = 20
+    burn_in: int = 5
 
     # task
     seed: int = 0

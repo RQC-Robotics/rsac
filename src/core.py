@@ -1,3 +1,4 @@
+import time
 from .agent import RSAC
 from . import wrappers, utils
 import torch
@@ -21,6 +22,7 @@ class RLAlg:
         self.interactions_count = 0
 
     def learn(self):
+        dur = time.time()
         while self.interactions_count < self.config.total_steps:
             tr = utils.simulate(self.env, self.policy, True)
             self.buffer.add(tr)
@@ -48,6 +50,12 @@ class RLAlg:
                 self.callback.add_scalar('test/eval_std', np.std(scores), self.interactions_count)
 
                 self.save()
+
+        dur = time.time() - dur
+        self.callback.add_hparams(
+            vars(self.config),
+            dict(duration=dur, score=np.mean(scores))
+        )
 
     def save(self):
         self.config.save(self.task_path / 'config.yml')
@@ -89,11 +97,17 @@ class RLAlg:
         elif self.config.observe in wrappers.PixelsWrapper.channels.keys():
             env = wrappers.PixelsWrapper(env, mode=self.config.observe)
         elif self.config.observe == 'point_cloud':
-            env = wrappers.PointCloudWrapper(
+            # env = wrappers.PointCloudWrapper(
+            #     env,
+            #     pn_number=self.config.pn_number,
+            #     render_kwargs=dict(camera_id=0, height=240, width=320),
+            #     downsample=self.config.downsample,
+            #     apply_segmentation=True,
+            # )
+            env = wrappers.PointCloudWrapperV2(
                 env,
                 pn_number=self.config.pn_number,
-                downsample=self.config.downsample,
-                apply_segmentation=True,
+                stride=self.config.downsample,
             )
         else:
             raise NotImplementedError

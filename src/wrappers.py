@@ -187,7 +187,7 @@ class PointCloudWrapper(Wrapper):
             apply_segmentation=True
     ):
         super().__init__(env)
-        self.render_kwargs = render_kwargs or dict(camera_id=0, height=84, width=84)
+        self.render_kwargs = render_kwargs or dict(camera_id=0, height=240, width=320)
         assert all(map(lambda k: k in self.render_kwargs, ('camera_id', 'height', 'width')))
         self.pn_number = pn_number
 
@@ -250,6 +250,64 @@ class PointCloudWrapper(Wrapper):
 
     def _mask(self, point_cloud):
         """ Heuristic to cut outliers """
+        return point_cloud[..., 2] < 10.
+
+    def observation_spec(self):
+        return specs.Array(shape=(self.pn_number, 3), dtype=np.float32, name='point_cloud')
+
+
+class PointCloudWrapperV2(Wrapper):
+    def __init__(self, env, pn_number: int = 1000, render_kwargs=None, stride: int = 1):
+        super().__init__(env)
+        self.render_kwargs = render_kwargs or dict(camera_id=0, height=240, width=320)
+        assert all(map(lambda k: k in self.render_kwargs, ('camera_id', 'height', 'width')))
+
+        self._grid = 1. + np.mgrid[:self.render_kwargs['height'], :self.render_kwargs['width']]
+
+        self._scene_option = wrapper.MjvOption()
+        self._scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0
+
+        self.stride = stride
+        self.pn_number = pn_number
+
+    def observation(self, timestep):
+        depth = self.env.physics.render(depth=True, scene_option=self._scene_option,
+                                        **self.render_kwargs)
+        pcd = self._point_cloud_from_depth(depth)
+        mask = self._mask(pcd)
+        pcd = pcd[mask][::self.stride]
+        return self._to_fixed_number(pcd).astype(np.float32)
+
+    def _point_cloud_from_depth(self, depth):
+        f_inv, cx, cy = self._inverse_intrinsic_matrix_params()
+        x, y = (depth * self._grid)
+        x = (x - cx) * f_inv
+        y = (y - cy) * f_inv
+
+        pc = np.stack((x, y, depth), axis=-1)
+        return pc
+        # rot_mat = self.env.physics.data.cam_xmat[self.render_kwargs['camera_id']].reshape(3, 3)
+        # return np.einsum('ij, hwi->hwj', rot_mat, pc).reshape(-1, 3)
+
+    def _to_fixed_number(self, pc):
+        n = len(pc)
+        if n == 0:
+            pc = np.zeros((1, 3))
+        elif n <= self.pn_number:
+            pc = np.pad(pc, ((0, self.pn_number - n), (0, 0)), mode='edge')
+        else:
+            pc = np.random.permutation(pc)[:self.pn_number]
+        return pc
+
+    def _inverse_intrinsic_matrix_params(self):
+        height = self.render_kwargs['height']
+        cx = (height - 1) / 2.
+        cy = (self.render_kwargs['width'] - 1) / 2.
+        fov = self.env.physics.model.cam_fovy[self.render_kwargs['camera_id']]
+        f_inv = 2 * np.tan(np.deg2rad(fov) / 2.) / height
+        return f_inv, cx, cy
+
+    def _mask(self, point_cloud):
         return point_cloud[..., 2] < 10.
 
     def observation_spec(self):
