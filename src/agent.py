@@ -203,7 +203,7 @@ class RSAC(nn.Module):
             self.decoder = nn.Linear(emb, obs_dim)
         elif self._c.observe in wrappers.PixelsWrapper.channels.keys():
             self.encoder = models.PixelsEncoder(obs_dim, emb)
-            self.decoder = models.PixelsDecoder(emb, obs_dim)
+            self.decoder = models.PixelsDecoder(hidden, obs_dim)
         elif self._c.observe == 'point_cloud':
             self.encoder = models.PointCloudEncoder(emb, layers=self._c.pn_layers,
                                                features_from_layers=())
