@@ -98,7 +98,7 @@ class TrajectoryBuffer(Dataset):
         return len(self._data)
 
     def sample_subset(self, size):
-        size = max(16*len(self._data), size)  # so agent doesn't overfit at the beginning
+        size = min(len(self._data), size)  # so agent doesn't overfit at the beginning
         idx = np.random.randint(0, len(self._data), size=size)
         return torch.utils.data.Subset(self, idx)
 
