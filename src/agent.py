@@ -51,20 +51,17 @@ class RSAC(nn.Module):
 
         alpha = torch.maximum(self._log_alpha, torch.full_like(self._log_alpha, -18.))
         alpha = F.softplus(alpha) + 1e-8
-
-        online_policy = self.actor(states.detach())
-        sampled_actions = online_policy.rsample([self._c.num_samples])
-        sampled_log_probs = online_policy.log_prob(sampled_actions).sum(-1, keepdim=True)
-
+        
+        policy = self.actor(states.detach())
+        
         critic_loss = self._policy_learning(
-            states, actions, rewards, dones, log_probs, target_states,
-            online_policy, sampled_actions, sampled_log_probs, alpha
+            states, actions, rewards, dones, log_probs, target_states, policy, alpha
         )
 
         auxiliary_loss = self._auxiliary_loss(obs, states)
 
         actor_loss, dual_loss = self._policy_improvement(
-            states.detach(), sampled_actions, sampled_log_probs, alpha)
+            states.detach(), policy, alpha)
         model_loss = critic_loss + auxiliary_loss + actor_loss + dual_loss
 
         self.optim.zero_grad()
@@ -93,13 +90,14 @@ class RSAC(nn.Module):
             dones,
             behaviour_log_probs,
             target_states,
-            online_policy,
-            sampled_actions,
-            sampled_log_probs,
+            policy,
             alpha
     ):
         del dones  # not used for continuous control tasks
         with torch.no_grad():
+            sampled_actions = policy.sample([self._c.num_samples])
+            sampled_log_probs = policy.log_prob(sampled_actions).sum(-1, keepdim=True)
+            
             q_values = self._target_critic(
                 torch.repeat_interleave(target_states[None], self._c.num_samples, 0),
                 sampled_actions
@@ -110,7 +108,7 @@ class RSAC(nn.Module):
             target_q_values = self._target_critic(
                 target_states, actions).min(-1, keepdim=True).values
 
-            log_probs = online_policy.log_prob(actions).sum(-1, keepdim=True)
+            log_probs = policy.log_prob(actions).sum(-1, keepdim=True)
             cs = torch.minimum(torch.tensor(1.), (log_probs - behaviour_log_probs).exp())
 
             deltas = rewards + self._c.discount * soft_values.roll(-1, 0) - target_q_values
@@ -134,14 +132,14 @@ class RSAC(nn.Module):
     def _policy_improvement(
             self,
             states,
-            actions,
-            log_probs,
+            policy,
             alpha
     ):
-        log_probs = log_probs.squeeze(-1)
+        actions = policy.rsample()
+        log_probs = policy.log_prob(actions).sum(-1)
         self.critic.requires_grad_(False)
         q_values = self.critic(
-            torch.repeat_interleave(states[None], self._c.num_samples, 0),
+            states,
             actions
         ).min(-1).values
         self.critic.requires_grad_(True)
@@ -224,7 +222,7 @@ class RSAC(nn.Module):
         self.optim = torch.optim.Adam([
             {'params': self._rl_params, 'lr': self._c.rl_lr},
             {'params': self._ae_params, 'lr': self._c.ae_lr, 'weight_decay': self._c.weight_decay},
-            {'params': [self._log_alpha], 'lr': self._c.dual_lr}
+            {'params': [self._log_alpha], 'lr': self._c.dual_lr, 'betas': (.5, .999)}
         ])
         self._target_entropy = self._c.target_ent_per_dim * act_dim
         self.apply(utils.weight_init)
