@@ -108,6 +108,7 @@ class RLAlg:
                 env,
                 pn_number=self.config.pn_number,
                 stride=self.config.downsample,
+                render_kwargs=dict(camera_id=0, height=84, width=84)
             )
         else:
             raise NotImplementedError
