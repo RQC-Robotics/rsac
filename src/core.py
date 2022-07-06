@@ -33,7 +33,6 @@ class RLAlg:
                     self.config.spi * len(tr['actions']) // self.config.seq_len
                 ),
                 batch_size=self.config.batch_size,
-                drop_last=True
             )
 
             for tr in dl:
@@ -112,6 +111,7 @@ class RLAlg:
                 env,
                 pn_number=self.config.pn_number,
                 stride=self.config.downsample,
+                render_kwargs=dict(camera_id=0, height=84, width=84)
             )
             env = wrappers.ActionRepeat(env, self.config.action_repeat)
             env = wrappers.FrameStack(env, self.config.frames_stack, stack=True)

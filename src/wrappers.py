@@ -185,7 +185,7 @@ class PointCloudWrapper(Wrapper):
             pn_number: int = 1000,
             render_kwargs=None,
             downsample=1,
-            apply_segmentation=True
+            apply_segmentation=False
     ):
         super().__init__(env)
         self.render_kwargs = render_kwargs or dict(camera_id=0, height=240, width=320)
@@ -260,20 +260,19 @@ class PointCloudWrapper(Wrapper):
 class PointCloudWrapperV2(Wrapper):
     def __init__(self, env, pn_number: int = 1000, render_kwargs=None, stride: int = 1):
         super().__init__(env)
-        self.render_kwargs = render_kwargs or dict(camera_id=0, height=240, width=320)
+        self.render_kwargs = render_kwargs or dict(camera_id=0, height=84, width=84)
         assert all(map(lambda k: k in self.render_kwargs, ('camera_id', 'height', 'width')))
 
         self._grid = 1. + np.mgrid[:self.render_kwargs['height'], :self.render_kwargs['width']]
 
-        self._scene_option = wrapper.MjvOption()
-        self._scene_option.flags[enums.mjtVisFlag.mjVIS_STATIC] = 0
-
         self.stride = stride
         self.pn_number = pn_number
+        self._selected_geoms = np.array(self._segment_by_name(
+            env.physics, ('ground', 'wall', 'floor'), **self.render_kwargs
+        ))
 
     def observation(self, timestep):
-        depth = self.env.physics.render(depth=True, scene_option=self._scene_option,
-                                        **self.render_kwargs)
+        depth = self.env.physics.render(depth=True, **self.render_kwargs)
         pcd = self._point_cloud_from_depth(depth)
         mask = self._mask(pcd)
         pcd = pcd[mask][::self.stride]
@@ -286,7 +285,7 @@ class PointCloudWrapperV2(Wrapper):
         y = (y - cy) * f_inv
 
         pc = np.stack((x, y, depth), axis=-1)
-        return pc
+        return pc.reshape(-1, 3)
         # rot_mat = self.env.physics.data.cam_xmat[self.render_kwargs['camera_id']].reshape(3, 3)
         # return np.einsum('ij, hwi->hwj', rot_mat, pc).reshape(-1, 3)
 
@@ -309,7 +308,24 @@ class PointCloudWrapperV2(Wrapper):
         return f_inv, cx, cy
 
     def _mask(self, point_cloud):
-        return point_cloud[..., 2] < 10.
+        seg = self.env.physics.render(segmentation=True, **self.render_kwargs)
+        segmentation = np.isin(seg[..., 0].flatten(), self._selected_geoms)
+        truncate = point_cloud[..., 2] < 10.
+        return np.logical_and(segmentation, truncate)
 
     def observation_spec(self):
         return specs.Array(shape=(self.pn_number, 3), dtype=np.float32, name='point_cloud')
+
+    @staticmethod
+    def _segment_by_name(physics, bad_geoms_names, **render_kwargs):
+        geom_ids = physics.render(segmentation=True, **render_kwargs)[..., 0]
+
+        def _predicate(geom_id):
+            return all(
+                map(
+                    lambda name: name not in physics.model.id2name(geom_id, 'geom'),
+                    bad_geoms_names
+                )
+            )
+
+        return list(filter(_predicate, np.unique(geom_ids).tolist()))

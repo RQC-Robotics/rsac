@@ -47,9 +47,9 @@ class Config(BaseConfig):
     mean_scale: float = 1.
 
     # PointNet
-    pn_number: int = 300
+    pn_number: int = 100
     pn_layers: tuple = (64, 128, 256)
-    downsample: int = 10
+    downsample: int = 5
 
     # train
     rl_lr: float = 3e-4
@@ -62,7 +62,7 @@ class Config(BaseConfig):
 
     total_steps: int = 2*10**6
     spi: int = 128
-    seq_len: int = 16
+    seq_len: int = 8
     batch_size: int = 16
     eval_freq: int = 20000
     buffer_size: int = 1000
