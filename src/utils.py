@@ -90,13 +90,13 @@ class TrajectoryBuffer(Dataset):
         return len(self._data)
 
     def sample_subset(self, size):
-        size = min(32*len(self._data), size)  # so agent doesn't overfit at the beginning
+        size = min(64*len(self._data), size)  # so agent doesn't overfit at the beginning
         idx = np.random.randint(0, len(self._data), size=size)
         return torch.utils.data.Subset(self, idx)
 
 
 class TruncatedTanhTransform(td.transforms.TanhTransform):
-    _lim = .9999
+    _lim = .99999
 
     def _inverse(self, y):
         y = torch.clamp(y, min=-self._lim, max=self._lim)

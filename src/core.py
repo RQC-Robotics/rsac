@@ -51,11 +51,12 @@ class RLAlg:
 
                 self.save()
 
-        dur = time.time() - dur
-        self.callback.add_hparams(
-            vars(self.config),
-            dict(duration=dur, score=np.mean(scores))
-        )
+        # dur = time.time() - dur
+        # self.callback.add_sca()
+        # self.callback.add_hparams(
+        #     vars(self.config),
+        #     dict(duration=dur, score=np.mean(scores))
+        # )
 
     def save(self):
         self.config.save(self.task_path / 'config.yml')
