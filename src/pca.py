@@ -43,8 +43,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('path', help='Path to directory containing weights and config.')
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--epochs', type=int, default=100)
-    parser.add_argument('--batch_size', type=int, default=2)
+    parser.add_argument('--epochs', type=int, default=20)
+    parser.add_argument('--batch_size', type=int, default=5)
     return parser.parse_args()
 
 
@@ -74,10 +74,12 @@ def train_pca(path, lr, epochs, batch_size):
                               (pca(observations), states))
     for i in range(states_pred.shape[-1]):
         plt.figure(figsize=(10, 6))
+        plt.title(f'proprietary state[{i}]')
         plt.plot(states_pred[:, i], label='pred')
         plt.plot(states[:, i], label='truth')
+        plt.xlabel('timestep')
         plt.legend()
-        plt.show()
+        plt.savefig(f'coord{i}.pdf', format='pdf')
 
     return pca
 
