@@ -34,7 +34,7 @@ class Config(BaseConfig):
     # algo
     discount: float = .99
     disclam: float = 1.
-    num_samples: int = 16
+    num_samples: int = 10
     action_repeat: int = 2
     init_temperature: float = .1
     target_ent_per_dim: float = -1.
@@ -60,10 +60,10 @@ class Config(BaseConfig):
     encoder_tau: float = .01
     max_grad: float = 40.
 
-    total_steps: int = 2*10**6
+    total_steps: int = 4*10**6
     spi: int = 128
     seq_len: int = 8
-    batch_size: int = 16
+    batch_size: int = 32
     eval_freq: int = 20000
     buffer_size: int = 1000
     burn_in: int = 5
