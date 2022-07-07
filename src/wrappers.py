@@ -235,7 +235,7 @@ class PointCloudWrapper(Wrapper):
         if self.pn_number:
             n = len(pc)
             if n == 0:
-                pc = np.zeros((1, 3))
+                pc = np.zeros((self.pn_number, 3))
             elif n <= self.pn_number:
                 pc = np.pad(pc, ((0, self.pn_number - n), (0, 0)), mode='edge')
             else:
