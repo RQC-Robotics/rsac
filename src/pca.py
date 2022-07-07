@@ -42,14 +42,15 @@ class PCA(nn.Module):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('path', help='Path to directory containing weights and config.')
-    parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--epochs', type=int, default=20)
+    parser.add_argument('--lr', type=float, default=1e-2)
+    parser.add_argument('--epochs', type=int, default=40)
     parser.add_argument('--batch_size', type=int, default=5)
     return parser.parse_args()
 
 
 def train_pca(path, lr, epochs, batch_size):
     alg = RLAlg.load(path)
+    alg.agent.requires_grad_(False)
     pca = PCA(alg, lr)
     monitor = wrappers.Monitor(alg.env)
 
