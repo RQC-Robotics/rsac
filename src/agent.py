@@ -55,18 +55,19 @@ class RSAC(nn.Module):
         policy = self.actor(states.detach())
         
         critic_loss = self._policy_learning(
-            states, actions, rewards, dones, log_probs, target_states, policy, alpha
+           states, actions, rewards, dones, target_states, policy, alpha
         )
 
         auxiliary_loss = self._auxiliary_loss(obs, states)
 
         actor_loss, dual_loss = self._policy_improvement(
-            states.detach(), policy, alpha)
+            policy, states.detach(), alpha)
         model_loss = critic_loss + auxiliary_loss + actor_loss + dual_loss
 
         self.optim.zero_grad()
         model_loss.backward()
-        clip_grad_norm_(self._rl_params, self._c.max_grad)
+        clip_grad_norm_(self.actor.paramters(), self._c.max_grad)
+        clip_grad_norm_(self.critic.parameters(), self._c.max_grad)
         clip_grad_norm_(self._ae_params, self._c.max_grad)
         self.optim.step()
 
@@ -88,55 +89,43 @@ class RSAC(nn.Module):
             actions,
             rewards,
             dones,
-            behaviour_log_probs,
             target_states,
             policy,
             alpha
     ):
         del dones  # not used for continuous control tasks
         with torch.no_grad():
-            sampled_actions = policy.sample([self._c.num_samples])
+            sampled_actions = policy.sample()
             sampled_log_probs = policy.log_prob(sampled_actions).sum(-1, keepdim=True)
             
             q_values = self._target_critic(
-                torch.repeat_interleave(target_states[None], self._c.num_samples, 0),
+                target_states,
                 sampled_actions
             ).min(-1, keepdim=True).values
 
-            soft_values = torch.mean(
-                q_values - alpha * sampled_log_probs, 0)
-            target_q_values = self._target_critic(
-                target_states, actions).min(-1, keepdim=True).values
-
-            log_probs = policy.log_prob(actions).sum(-1, keepdim=True)
-            cs = torch.minimum(torch.tensor(1.), (log_probs - behaviour_log_probs).exp())
-
-            deltas = rewards + self._c.discount * soft_values.roll(-1, 0) - target_q_values
-            target_q_values, deltas, cs = map(
-                lambda t: t[:-1], (target_q_values, deltas, cs))
-            deltas = utils.retrace(deltas, cs, self._c.discount, self._c.disclam)
-            target_q_values += deltas
+            soft_values = q_values - alpha*sampled_log_probs
+            
+            target_q_values = rewards + self._c.discount*soft_values.roll(-1, 0)
 
         q_values = self.critic(states, actions)
-        loss = (q_values[:-1] - target_q_values).pow(2)
+        loss = (q_values - target_q_values)[:-1].pow(2)
         loss = self._sequence_discount(loss) * loss
 
         if self._c.debug:
             self.callback.add_scalar('train/mean_reward',
                                      rewards.detach().mean() / self._c.action_repeat, self._step)
             self.callback.add_scalar('train/mean_value', q_values.detach().mean(), self._step)
-            self.callback.add_scalar('train/retrace_weight', cs.detach().mean(), self._step)
-            self.callback.add_scalar('train/mean_deltas', deltas.detach().mean(), self._step)
         return loss.mean()
 
     def _policy_improvement(
             self,
-            states,
             policy,
+            states,
             alpha
     ):
         actions = policy.rsample()
         log_probs = policy.log_prob(actions).sum(-1)
+        
         self.critic.requires_grad_(False)
         q_values = self.critic(
             states,
@@ -216,11 +205,11 @@ class RSAC(nn.Module):
         self._target_encoder, self._target_critic, self._target_cell =\
             utils.make_targets(self.encoder, self.critic, self.cell)
 
-        self._rl_params = utils.make_param_group(self.critic, self.actor)
         self._ae_params = utils.make_param_group(self.encoder, self.cell, self.decoder)
 
         self.optim = torch.optim.Adam([
-            {'params': self._rl_params, 'lr': self._c.rl_lr},
+            {'params': self.actor.parameters(), 'lr': self._c.actor_lr},
+            {'params': self.critic.parameters(), 'lr': self._c.critic_lr},
             {'params': self._ae_params, 'lr': self._c.ae_lr, 'weight_decay': self._c.weight_decay},
             {'params': [self._log_alpha], 'lr': self._c.dual_lr, 'betas': (.5, .999)}
         ])

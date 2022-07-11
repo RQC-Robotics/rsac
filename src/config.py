@@ -42,7 +42,7 @@ class Config(BaseConfig):
     # architecture
     critic_layers: tuple = (256, 256)
     actor_layers: tuple = (256, 256)
-    hidden_dim: int = 128
+    hidden_dim: int = 256
     obs_emb_dim: int = 50
     mean_scale: float = 1.
 
@@ -53,6 +53,8 @@ class Config(BaseConfig):
 
     # train
     rl_lr: float = 3e-4
+    actor_lr: float = 3e-4
+    critic_lr: float = 3e-4
     ae_lr: float = 3e-4
     dual_lr: float = 1e-4
     weight_decay: float = 0.
