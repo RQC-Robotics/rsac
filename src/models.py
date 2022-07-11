@@ -49,8 +49,7 @@ class Actor(nn.Module):
         dist = td.Normal(mu, std)
         dist = td.transformed_distribution.TransformedDistribution(
             dist,
-            td.transforms.TanhTransform(cache_size=1),
-            # TruncatedTanhTransform(cache_size=1),
+            TruncatedTanhTransform(cache_size=1),
         )
         return dist
 
