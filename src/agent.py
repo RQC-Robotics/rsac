@@ -30,7 +30,7 @@ class RSAC(nn.Module):
         else:
             action = torch.tanh(dist.base_dist.mean)
 
-        log_prob = dist.log_prob(action).sum(-1)
+        log_prob = dist.log_prob(action)
         return action, log_prob, state
 
     def step(self, obs, actions, rewards, dones, log_probs, hidden_states):
@@ -53,20 +53,31 @@ class RSAC(nn.Module):
         alpha = F.softplus(alpha) + 1e-8
         
         policy = self.actor(states.detach())
+        sampled_actions = policy.rsample()
+        sampled_log_probs = policy.log_prob(sampled_actions)
         
-        critic_loss = self._policy_learning(
-           states, actions, rewards, dones, target_states, policy, alpha
-        )
-
+        critic_loss = self._policy_learning(states,
+                                            actions,
+                                            rewards,
+                                            dones,
+                                            target_states,
+                                            sampled_actions,
+                                            sampled_log_probs,
+                                            alpha
+                                            )
+        
         auxiliary_loss = self._auxiliary_loss(obs, states)
 
-        actor_loss, dual_loss = self._policy_improvement(
-            policy, states.detach(), alpha)
+        actor_loss, dual_loss = self._policy_improvement(states.detach(),
+                                                         sampled_actions,
+                                                         sampled_log_probs,
+                                                         alpha
+                                                         )
         model_loss = critic_loss + auxiliary_loss + actor_loss + dual_loss
 
         self.optim.zero_grad()
         model_loss.backward()
-        clip_grad_norm_(self.actor.paramters(), self._c.max_grad)
+        clip_grad_norm_(self.actor.parameters(), self._c.max_grad)
         clip_grad_norm_(self.critic.parameters(), self._c.max_grad)
         clip_grad_norm_(self._ae_params, self._c.max_grad)
         self.optim.step()
@@ -90,25 +101,23 @@ class RSAC(nn.Module):
             rewards,
             dones,
             target_states,
-            policy,
+            sampled_actions,
+            sampled_log_probs,
             alpha
     ):
         del dones  # not used for continuous control tasks
         with torch.no_grad():
-            sampled_actions = policy.sample()
-            sampled_log_probs = policy.log_prob(sampled_actions).sum(-1, keepdim=True)
-            
             q_values = self._target_critic(
                 target_states,
                 sampled_actions
             ).min(-1, keepdim=True).values
 
-            soft_values = q_values - alpha*sampled_log_probs
+            soft_values = q_values - alpha*sampled_log_probs.unsqueeze(-1)
             
             target_q_values = rewards + self._c.discount*soft_values.roll(-1, 0)
 
         q_values = self.critic(states, actions)
-        loss = (q_values - target_q_values)[:-1].pow(2)
+        loss = .5 * (q_values - target_q_values)[:-1].pow(2)
         loss = self._sequence_discount(loss) * loss
 
         if self._c.debug:
@@ -119,13 +128,11 @@ class RSAC(nn.Module):
 
     def _policy_improvement(
             self,
-            policy,
             states,
+            actions,
+            log_probs,
             alpha
     ):
-        actions = policy.rsample()
-        log_probs = policy.log_prob(actions).sum(-1)
-        
         self.critic.requires_grad_(False)
         q_values = self.critic(
             states,
@@ -142,14 +149,14 @@ class RSAC(nn.Module):
         dual_loss = - alpha * (log_probs.detach() + self._target_entropy)
         return actor_loss.mean(), dual_loss.mean()
 
-    def _auxiliary_loss(self, obs, states_emb):
+    def _auxiliary_loss(self, obs, states):
         # todo check l2 reg; introduce lagrange multipliers
         if self._c.aux_loss == 'None':
             return torch.tensor(0.)
         elif self._c.aux_loss == 'reconstruction':
-            obs_pred = self.decoder(states_emb)
+            obs_pred = self.decoder(states)
             if self._c.observe == 'point_cloud':
-                loss = chamfer_distance(obs.flatten(0, 1), obs_pred.flatten(0, 1))[0]
+                loss = chamfer_distance(obs.flatten(0, -3), obs_pred.flatten(0, -3))[0]
             else:
                 loss = (obs_pred - obs).pow(2)
             return loss.mean()

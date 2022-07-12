@@ -258,7 +258,7 @@ class PointCloudWrapper(Wrapper):
 
 
 class PointCloudWrapperV2(Wrapper):
-    def __init__(self, env, pn_number: int = 1000, render_kwargs=None, stride: int = 1):
+    def __init__(self, env, pn_number: int = 1000, render_kwargs=None, stride: int = -1):
         super().__init__(env)
         self.render_kwargs = render_kwargs or dict(camera_id=0, height=84, width=84)
         assert all(map(lambda k: k in self.render_kwargs, ('camera_id', 'height', 'width')))
@@ -275,7 +275,7 @@ class PointCloudWrapperV2(Wrapper):
         depth = self.env.physics.render(depth=True, **self.render_kwargs)
         pcd = self._point_cloud_from_depth(depth)
         mask = self._mask(pcd)
-        pcd = pcd[mask][::self.stride]
+        pcd = self._downsampling(pcd[mask])
         return self._to_fixed_number(pcd).astype(np.float32)
 
     def _point_cloud_from_depth(self, depth):
@@ -329,3 +329,11 @@ class PointCloudWrapperV2(Wrapper):
             )
 
         return list(filter(_predicate, np.unique(geom_ids).tolist()))
+
+    def _downsampling(self, pcd):
+        if self.stride < 0:
+            adaptive_stride = pcd.shape[0] // self.pn_number
+            return pcd[::adaptive_stride]
+        else:
+            return pcd[::self.stride]
+

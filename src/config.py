@@ -34,7 +34,6 @@ class Config(BaseConfig):
     # algo
     discount: float = .99
     disclam: float = 1.
-    num_samples: int = 10
     action_repeat: int = 2
     init_temperature: float = .1
     target_ent_per_dim: float = -1.
@@ -49,18 +48,17 @@ class Config(BaseConfig):
     # PointNet
     pn_number: int = 100
     pn_layers: tuple = (64, 128, 256)
-    downsample: int = 5
+    stride: int = -1
 
     # train
-    rl_lr: float = 3e-4
     actor_lr: float = 3e-4
     critic_lr: float = 3e-4
     ae_lr: float = 3e-4
-    dual_lr: float = 1e-4
+    dual_lr: float = 3e-4
     weight_decay: float = 0.
-    critic_tau: float = .01
-    encoder_tau: float = .01
-    max_grad: float = 40.
+    critic_tau: float = .005
+    encoder_tau: float = .005
+    max_grad: float = 50.
 
     total_steps: int = 4*10**6
     spi: int = 128
