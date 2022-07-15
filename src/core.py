@@ -53,7 +53,7 @@ class RLAlg:
 
         dur = time.time() - dur
         self.callback.add_hparams(
-            {k: v for k, v in vars(self.config) if
+            {k: v for k, v in vars(self.config).items() if
              any(map(lambda t: isinstance(v, t), (int, float, bool)))},
             dict(duration=dur, score=np.mean(scores))
         )
