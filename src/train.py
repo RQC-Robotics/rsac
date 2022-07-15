@@ -12,8 +12,11 @@ def parse_args():
     )
     parser.add_argument('--load', type=pathlib.Path, help='path to the experiment dir')
     for field in dataclasses.fields(Config):
-        parser.add_argument(f'--{field.name}', type=field.type,
-                            default=field.default, help=str(field.type))
+        parser.add_argument(f'--{field.name}',
+                            type=int if field.type is tuple else field.type,
+                            nargs="*" if field.type is tuple else '?',
+                            default=field.default, help=str(field.type)
+                            )
     return parser.parse_args()
 
 

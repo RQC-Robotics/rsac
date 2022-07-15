@@ -16,7 +16,7 @@ class RLAlg:
         self.config = config
         self.env = self.make_env(random=config.seed)
         self.task_path = pathlib.Path(config.logdir)
-        self.callback = SummaryWriter(log_dir=self.task_path)
+        self.callback = SummaryWriter(log_dir=str(self.task_path))
         self.agent = RSAC(self.env, config, self.callback)
         self.buffer = utils.TrajectoryBuffer(config.buffer_size, seq_len=config.seq_len+1)
         self.interactions_count = 0
@@ -51,12 +51,12 @@ class RLAlg:
 
                 self.save()
 
-        # dur = time.time() - dur
-        # self.callback.add_sca()
-        # self.callback.add_hparams(
-        #     vars(self.config),
-        #     dict(duration=dur, score=np.mean(scores))
-        # )
+        dur = time.time() - dur
+        self.callback.add_hparams(
+            {k: v for k, v in vars(self.config) if
+             any(map(lambda t: isinstance(v, t), (int, float, bool)))},
+            dict(duration=dur, score=np.mean(scores))
+        )
 
     def save(self):
         self.config.save(self.task_path / 'config.yml')
@@ -111,8 +111,8 @@ class RLAlg:
             env = wrappers.PointCloudWrapperV2(
                 env,
                 pn_number=self.config.pn_number,
-                stride=self.config.downsample,
-                render_kwargs=dict(camera_id=0, height=84, width=84)
+                stride=self.config.stride,
+                render_kwargs=dict(camera_id=0, height=240, width=320)
             )
             env = wrappers.ActionRepeat(env, self.config.action_repeat)
             env = wrappers.FrameStack(env, self.config.frames_stack, stack=True)

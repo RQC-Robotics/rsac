@@ -42,14 +42,13 @@ class Actor(nn.Module):
         mu = self.mean_scale * torch.tanh(mu / self.mean_scale)
         std = torch.maximum(std, torch.full_like(std, -18.))
         std = F.softplus(std) + 1e-4
-        return self.get_dist(mu, std)
-
-    @staticmethod
-    def get_dist(mu, std):
-        dist = td.Normal(mu, std)
         dist = td.transformed_distribution.TransformedDistribution(
-            dist,
-            TruncatedTanhTransform(cache_size=1),
+            td.Normal(mu, std),
+            td.IndependentTransform(
+                td.transforms.TanhTransform(cache_size=1),
+                reinterpreted_batch_ndims=1,
+                cache_size=1
+            )
         )
         return dist
 
